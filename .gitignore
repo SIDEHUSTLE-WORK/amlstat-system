@@ -10,6 +10,7 @@ node_modules/
 # ==========================
 build/
 dist/
+dist-ssr/
 .next/
 out/
 .tmp/
@@ -17,18 +18,46 @@ temp/
 .cache/
 
 # ==========================
-# Testing
+# Frontend (Vite)
 # ==========================
-coverage/
-jest-cache/
-jest-html-reporters-*
+# Vite
+*.local
+
+# ==========================
+# Backend (Node/Express)
+# ==========================
+# TypeScript compiled files
+*.tsbuildinfo
+
+# ==========================
+# Database (Prisma)
+# ==========================
+*.db
+*.sqlite
+*.sqlite3
+# Keep migration files but ignore dev.db
+prisma/dev.db
+# Prisma generates these - you may want to commit them
+# node_modules/.prisma/
+# node_modules/@prisma/
 
 # ==========================
 # Environment & Config
 # ==========================
 .env
 .env.*
+.env.local
+.env.development
+.env.production
 !.env.example
+
+# ==========================
+# Testing
+# ==========================
+coverage/
+jest-cache/
+jest-html-reporters-*
+*.test.js.snap
 
 # ==========================
 # Logs & Debug
@@ -39,54 +68,82 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+pnpm-debug.log*
 
 # ==========================
-# Editors & OS
+# Editors & IDE
 # ==========================
 .DS_Store
 Thumbs.db
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
 *~
-
-# ==========================
-# Databases
-# ==========================
-*.db
-*.sqlite
-*.sqlite3
+.history/
 
 # ==========================
 # Uploads & Runtime Data
 # ==========================
-uploads/
-public/uploads/
-storage/
-*.pid
-*.seed
-
-
-# ==========================
-# Uploads & Runtime Data
-# ==========================
-uploads/
-public/uploads/
-storage/
-*.pid
-*.seed
-
-# But keep the uploads directory structure
+uploads/*
 !uploads/.gitkeep
+backend/uploads/*
 !backend/uploads/.gitkeep
-
+frontend/public/uploads/*
+!frontend/public/uploads/.gitkeep
+storage/
+*.pid
+*.seed
 
 # ==========================
 # Package Managers
 # ==========================
-# Ignore lockfiles if using multiple package managers
-# (optional — uncomment as needed)
+# Uncomment if you want to ignore lockfiles
+# (Not recommended - lockfiles ensure consistent installs)
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
+
+# ==========================
+# OS Files
+# ==========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# ==========================
+# Temporary Files
+# ==========================
+*.tmp
+*.temp
+.~*
+~$*
+
+# ==========================
+# API Keys & Secrets
+# ==========================
+# Extra safety for sensitive files
+*.pem
+*.key
+*.cert
+secrets.json
+config/secrets.js
+config/production.js
+
+# ==========================
+# Backup Files
+# ==========================
+*.bak
+*.backup
+*.old
+*_backup
+*_old

@@ -2,7 +2,7 @@
 import axios from 'axios';
 import type { Conversation, ChatMessage } from '../types/chat';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api'; // 🔥 CHANGED FROM 3000 TO 5001
 
 // Create axios instance with default config
 const chatApi = axios.create({
@@ -14,7 +14,7 @@ const chatApi = axios.create({
 
 // Add auth token to requests
 chatApi.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('accessToken'); // 🔥 CHANGED FROM 'token' TO 'accessToken'
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

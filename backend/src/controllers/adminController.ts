@@ -1,9 +1,6 @@
 // src/controllers/adminController.ts
 import { Request, Response, NextFunction } from 'express';
-import { Organization } from '../models/Organization';
-import { Submission } from '../models/Submission';
-import { User } from '../models/User';
-import { Op } from 'sequelize';
+import prisma from '../config/prisma'; // 🔥 PRISMA IMPORT
 
 // 📊 GET DASHBOARD STATS
 export const getDashboardStats = async (req: Request, res: Response, next: NextFunction) => {
@@ -12,31 +9,43 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
     const currentMonth = new Date().getMonth() + 1;
 
     // Count organizations
-    const totalOrganizations = await Organization.count();
-    const activeOrganizations = await Organization.count({ where: { isActive: true } });
+    const totalOrganizations = await prisma.organization.count();
+    const activeOrganizations = await prisma.organization.count({ 
+      where: { isActive: true } 
+    });
 
     // Count submissions
-    const totalSubmissions = await Submission.count();
-    const completedSubmissions = await Submission.count({ where: { status: 'approved' } });
-    const pendingSubmissions = await Submission.count({ where: { status: 'submitted' } });
+    const totalSubmissions = await prisma.submission.count();
+    const completedSubmissions = await prisma.submission.count({ 
+      where: { status: 'APPROVED' } 
+    });
+    const pendingSubmissions = await prisma.submission.count({ 
+      where: { status: 'SUBMITTED' } 
+    });
     const overdueSubmissions = 0; // TODO: Calculate based on deadlines
 
     // Calculate average compliance rate
-    const organizations = await Organization.findAll();
-    const orgStats = await Promise.all(
-      organizations.map(async (org) => {
-        const submissions = await Submission.findAll({
-          where: { organizationId: org.id }
-        });
-        const completed = submissions.filter(s => s.status === 'approved').length;
-        return submissions.length > 0 ? (completed / submissions.length) * 100 : 0;
-      })
-    );
-    const averageComplianceRate = orgStats.reduce((sum, score) => sum + score, 0) / orgStats.length;
+    const organizations = await prisma.organization.findMany({
+      include: {
+        submissions: true
+      }
+    });
+
+    const orgStats = organizations.map((org) => {
+      const completed = org.submissions.filter(s => s.status === 'APPROVED').length;
+      return org.submissions.length > 0 ? (completed / org.submissions.length) * 100 : 0;
+    });
+
+    const averageComplianceRate = orgStats.length > 0 
+      ? orgStats.reduce((sum, score) => sum + score, 0) / orgStats.length 
+      : 0;
 
     // Current month stats
-    const currentMonthSubmissions = await Submission.count({
-      where: { year: currentYear, month: currentMonth }
+    const currentMonthSubmissions = await prisma.submission.count({
+      where: { 
+        year: currentYear, 
+        month: currentMonth 
+      }
     });
     const currentMonthPending = activeOrganizations - currentMonthSubmissions;
 
@@ -70,34 +79,34 @@ export const getSystemOverview = async (req: Request, res: Response, next: NextF
   try {
     const { year = new Date().getFullYear() } = req.query;
 
-    const organizations = await Organization.findAll({
-      where: { isActive: true }
-    });
-
-    const overview = await Promise.all(
-      organizations.map(async (org) => {
-        const submissions = await Submission.findAll({
-          where: { 
-            organizationId: org.id,
+    const organizations = await prisma.organization.findMany({
+      where: { isActive: true },
+      include: {
+        submissions: {
+          where: {
             year: parseInt(year as string)
           }
-        });
+        }
+      }
+    });
 
-        return {
-          id: org.id,
-          code: org.code,
-          name: org.name,
-          type: org.type,
-          totalSubmissions: submissions.length,
-          completedSubmissions: submissions.filter(s => s.status === 'approved').length,
-          pendingSubmissions: submissions.filter(s => s.status === 'submitted').length,
-          rejectedSubmissions: submissions.filter(s => s.status === 'rejected').length,
-          complianceScore: submissions.length > 0
-            ? Math.round((submissions.filter(s => s.status === 'approved').length / submissions.length) * 100)
-            : 0
-        };
-      })
-    );
+    const overview = organizations.map((org) => {
+      const submissions = org.submissions;
+
+      return {
+        id: org.id,
+        code: org.code,
+        name: org.name,
+        type: org.type,
+        totalSubmissions: submissions.length,
+        completedSubmissions: submissions.filter(s => s.status === 'APPROVED').length,
+        pendingSubmissions: submissions.filter(s => s.status === 'SUBMITTED').length,
+        rejectedSubmissions: submissions.filter(s => s.status === 'REJECTED').length,
+        complianceScore: submissions.length > 0
+          ? Math.round((submissions.filter(s => s.status === 'APPROVED').length / submissions.length) * 100)
+          : 0
+      };
+    });
 
     res.json({
       success: true,
@@ -116,39 +125,40 @@ export const getComplianceReport = async (req: Request, res: Response, next: Nex
   try {
     const { year = new Date().getFullYear() } = req.query;
 
-    const organizations = await Organization.findAll();
-
-    const complianceData = await Promise.all(
-      organizations.map(async (org) => {
-        const submissions = await Submission.findAll({
-          where: { 
-            organizationId: org.id,
+    const organizations = await prisma.organization.findMany({
+      include: {
+        submissions: {
+          where: {
             year: parseInt(year as string)
           }
-        });
+        }
+      }
+    });
 
-        const monthlyCompliance = Array.from({ length: 12 }, (_, i) => {
-          const monthSubmission = submissions.find(s => s.month === i + 1);
-          return {
-            month: i + 1,
-            submitted: !!monthSubmission,
-            status: monthSubmission?.status || null,
-            completionRate: monthSubmission?.completionRate || 0
-          };
-        });
+    const complianceData = organizations.map((org) => {
+      const submissions = org.submissions;
 
+      const monthlyCompliance = Array.from({ length: 12 }, (_, i) => {
+        const monthSubmission = submissions.find(s => s.month === i + 1);
         return {
-          organizationId: org.id,
-          organizationCode: org.code,
-          organizationName: org.name,
-          totalExpected: 12,
-          totalSubmitted: submissions.length,
-          totalApproved: submissions.filter(s => s.status === 'approved').length,
-          complianceRate: Math.round((submissions.filter(s => s.status === 'approved').length / 12) * 100),
-          monthlyCompliance
+          month: i + 1,
+          submitted: !!monthSubmission,
+          status: monthSubmission?.status || null,
+          completionRate: monthSubmission?.completionRate || 0
         };
-      })
-    );
+      });
+
+      return {
+        organizationId: org.id,
+        organizationCode: org.code,
+        organizationName: org.name,
+        totalExpected: 12,
+        totalSubmitted: submissions.length,
+        totalApproved: submissions.filter(s => s.status === 'APPROVED').length,
+        complianceRate: Math.round((submissions.filter(s => s.status === 'APPROVED').length / 12) * 100),
+        monthlyCompliance
+      };
+    });
 
     res.json({
       success: true,
@@ -170,12 +180,14 @@ export const getFinancialMetrics = async (req: Request, res: Response, next: Nex
   try {
     const { year = new Date().getFullYear() } = req.query;
 
-    const submissions = await Submission.findAll({
+    const submissions = await prisma.submission.findMany({
       where: { 
         year: parseInt(year as string),
-        status: 'approved'
+        status: 'APPROVED'
       },
-      include: [{ model: Organization }]
+      include: { 
+        organization: true 
+      }
     });
 
     // Calculate aggregate metrics
@@ -189,18 +201,18 @@ export const getFinancialMetrics = async (req: Request, res: Response, next: Nex
     let totalInspections = 0;
 
     submissions.forEach(submission => {
-      submission.indicators.forEach((indicator: any) => {
-        const value = parseFloat(indicator.value) || 0;
-        
-        if (indicator.number === '1.1') totalSTRs += value;
-        if (indicator.number === '6.1') totalCases += value;
-        if (indicator.number === '6.4') totalAssetsFrozen += value;
-        if (indicator.number === '6.5') totalAssetsSeized += value;
-        if (indicator.number === '6.3') totalConvictions += value;
-        if (indicator.number === '1.6') totalTransactionAmount += value;
-        if (indicator.number === '3.3') totalEnforcementActions += value;
-        if (indicator.number === '3.1') totalInspections += value;
-      });
+      // indicators is a JSON field
+      const indicators = submission.indicators as any;
+      
+      // Access indicators by key (e.g., "1.1", "6.1", etc.)
+      if (indicators['1.1']) totalSTRs += parseFloat(indicators['1.1']) || 0;
+      if (indicators['6.1']) totalCases += parseFloat(indicators['6.1']) || 0;
+      if (indicators['6.4']) totalAssetsFrozen += parseFloat(indicators['6.4']) || 0;
+      if (indicators['6.5']) totalAssetsSeized += parseFloat(indicators['6.5']) || 0;
+      if (indicators['6.3']) totalConvictions += parseFloat(indicators['6.3']) || 0;
+      if (indicators['1.6']) totalTransactionAmount += parseFloat(indicators['1.6']) || 0;
+      if (indicators['3.3']) totalEnforcementActions += parseFloat(indicators['3.3']) || 0;
+      if (indicators['3.1']) totalInspections += parseFloat(indicators['3.1']) || 0;
     });
 
     const metrics = {
@@ -219,8 +231,10 @@ export const getFinancialMetrics = async (req: Request, res: Response, next: Nex
         let monthlySTRs = 0;
         
         monthSubmissions.forEach(sub => {
-          const strIndicator = sub.indicators.find((ind: any) => ind.number === '1.1');
-          if (strIndicator) monthlySTRs += parseFloat(strIndicator.value) || 0;
+          const indicators = sub.indicators as any;
+          if (indicators['1.1']) {
+            monthlySTRs += parseFloat(indicators['1.1']) || 0;
+          }
         });
 
         return {
@@ -252,18 +266,34 @@ export const exportData = async (req: Request, res: Response, next: NextFunction
 
     switch (type) {
       case 'submissions':
-        data = await Submission.findAll({
+        data = await prisma.submission.findMany({
           where: year ? { year: parseInt(year as string) } : {},
-          include: [{ model: Organization }]
+          include: { organization: true }
         });
         break;
 
       case 'organizations':
-        data = await Organization.findAll();
+        data = await prisma.organization.findMany();
         break;
 
       case 'compliance':
         // Implement compliance export
+        const organizations = await prisma.organization.findMany({
+          include: {
+            submissions: {
+              where: year ? { year: parseInt(year as string) } : {}
+            }
+          }
+        });
+        data = organizations.map(org => ({
+          organizationCode: org.code,
+          organizationName: org.name,
+          totalSubmissions: org.submissions.length,
+          approvedSubmissions: org.submissions.filter(s => s.status === 'APPROVED').length,
+          complianceRate: org.submissions.length > 0
+            ? Math.round((org.submissions.filter(s => s.status === 'APPROVED').length / org.submissions.length) * 100)
+            : 0
+        }));
         break;
 
       default:

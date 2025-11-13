@@ -1,62 +1,63 @@
 // src/controllers/organizationController.ts
 import { Request, Response, NextFunction } from 'express';
-import { Organization } from '../models/Organization';
-import { Submission } from '../models/Submission';
-import { User } from '../models/User';
-import { Op } from 'sequelize';
+import prisma from '../config/prisma'; 
 
 // 🏢 GET ALL ORGANIZATIONS
 export const getAllOrganizations = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { type, isActive, search } = req.query;
 
+    // Build Prisma where clause
     const where: any = {};
 
     if (type) where.type = type;
     if (isActive !== undefined) where.isActive = isActive === 'true';
     if (search) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${search}%` } },
-        { code: { [Op.iLike]: `%${search}%` } }
+      where.OR = [
+        { name: { contains: search as string, mode: 'insensitive' } },
+        { code: { contains: search as string, mode: 'insensitive' } }
       ];
     }
 
-    const organizations = await Organization.findAll({
+    const organizations = await prisma.organization.findMany({
       where,
-      order: [['name', 'ASC']]
+      orderBy: { name: 'asc' },
+      include: {
+        submissions: true
+      }
     });
 
     // Calculate statistics for each organization
-    const orgsWithStats = await Promise.all(
-      organizations.map(async (org) => {
-        const submissions = await Submission.findAll({
-          where: { organizationId: org.id }
-        });
+    const orgsWithStats = organizations.map((org) => {
+      const totalSubmissions = org.submissions.length;
+      const completedSubmissions = org.submissions.filter(s => s.status === 'APPROVED').length;
+      const pendingSubmissions = org.submissions.filter(s => s.status === 'SUBMITTED').length;
+      const overdueSubmissions = org.overdueSubmissions;
 
-        const totalSubmissions = submissions.length;
-        const completedSubmissions = submissions.filter(s => s.status === 'approved').length;
-        const pendingSubmissions = submissions.filter(s => s.status === 'submitted').length;
-        const overdueSubmissions = 0; // TODO: Calculate based on deadlines
+      const complianceScore = org.complianceScore;
 
-        const complianceScore = totalSubmissions > 0 
-          ? Math.round((completedSubmissions / totalSubmissions) * 100)
-          : 0;
+      const lastSubmission = org.submissions
+        .filter(s => s.submittedAt)
+        .sort((a, b) => b.submittedAt!.getTime() - a.submittedAt!.getTime())[0];
 
-        const lastSubmission = submissions
-          .filter(s => s.submittedAt)
-          .sort((a, b) => b.submittedAt!.getTime() - a.submittedAt!.getTime())[0];
-
-        return {
-          ...org.toJSON(),
-          totalSubmissions,
-          completedSubmissions,
-          pendingSubmissions,
-          overdueSubmissions,
-          complianceScore,
-          lastSubmissionDate: lastSubmission?.submittedAt || null
-        };
-      })
-    );
+      return {
+        id: org.id,
+        code: org.code,
+        name: org.name,
+        type: org.type,
+        sector: org.sector,
+        contactEmail: org.contactEmail,
+        contactPhone: org.contactPhone,
+        isActive: org.isActive,
+        createdAt: org.createdAt,
+        totalSubmissions,
+        completedSubmissions,
+        pendingSubmissions,
+        overdueSubmissions,
+        complianceScore,
+        lastSubmissionDate: lastSubmission?.submittedAt || null
+      };
+    });
 
     res.json({
       success: true,
@@ -75,7 +76,13 @@ export const getOrganizationById = async (req: Request, res: Response, next: Nex
   try {
     const { id } = req.params;
 
-    const organization = await Organization.findByPk(id);
+    const organization = await prisma.organization.findUnique({
+      where: { id },
+      include: {
+        submissions: true,
+        users: true
+      }
+    });
 
     if (!organization) {
       return res.status(404).json({
@@ -85,7 +92,7 @@ export const getOrganizationById = async (req: Request, res: Response, next: Nex
     }
 
     // Check access
-    if (req.user!.role !== 'fia_admin' && req.user!.organizationId !== id) {
+    if (req.user!.role !== 'FIA_ADMIN' && req.user!.organizationId !== id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -93,21 +100,17 @@ export const getOrganizationById = async (req: Request, res: Response, next: Nex
     }
 
     // Get statistics
-    const submissions = await Submission.findAll({
-      where: { organizationId: id }
-    });
-
-    const totalSubmissions = submissions.length;
-    const completedSubmissions = submissions.filter(s => s.status === 'approved').length;
-    const pendingSubmissions = submissions.filter(s => s.status === 'submitted').length;
-    const rejectedSubmissions = submissions.filter(s => s.status === 'rejected').length;
+    const totalSubmissions = organization.submissions.length;
+    const completedSubmissions = organization.submissions.filter(s => s.status === 'APPROVED').length;
+    const pendingSubmissions = organization.submissions.filter(s => s.status === 'SUBMITTED').length;
+    const rejectedSubmissions = organization.submissions.filter(s => s.status === 'REJECTED').length;
 
     const complianceScore = totalSubmissions > 0 
       ? Math.round((completedSubmissions / totalSubmissions) * 100)
       : 0;
 
     const orgWithStats = {
-      ...organization.toJSON(),
+      ...organization,
       totalSubmissions,
       completedSubmissions,
       pendingSubmissions,
@@ -130,10 +133,21 @@ export const getOrganizationById = async (req: Request, res: Response, next: Nex
 // 🏢 CREATE ORGANIZATION
 export const createOrganization = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { code, name, type, email, phone, contactPerson } = req.body;
+    const { 
+      code, 
+      name, 
+      type, 
+      sector,
+      registrationNo,
+      contactEmail, 
+      contactPhone, 
+      address 
+    } = req.body;
 
     // Check if organization code already exists
-    const existingOrg = await Organization.findOne({ where: { code } });
+    const existingOrg = await prisma.organization.findUnique({ 
+      where: { code } 
+    });
 
     if (existingOrg) {
       return res.status(409).json({
@@ -142,15 +156,18 @@ export const createOrganization = async (req: Request, res: Response, next: Next
       });
     }
 
-    const organization = await Organization.create({
-      code,
-      name,
-      type,
-      email,
-      phone,
-      contactPerson,
-      isActive: true,
-      createdBy: req.user!.id
+    const organization = await prisma.organization.create({
+      data: {
+        code,
+        name,
+        type,
+        sector,
+        registrationNo,
+        contactEmail,
+        contactPhone,
+        address,
+        isActive: true
+      }
     });
 
     res.status(201).json({
@@ -170,9 +187,19 @@ export const createOrganization = async (req: Request, res: Response, next: Next
 export const updateOrganization = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { name, type, email, phone, contactPerson } = req.body;
+    const { 
+      name, 
+      type, 
+      sector,
+      registrationNo,
+      contactEmail, 
+      contactPhone,
+      address 
+    } = req.body;
 
-    const organization = await Organization.findByPk(id);
+    const organization = await prisma.organization.findUnique({
+      where: { id }
+    });
 
     if (!organization) {
       return res.status(404).json({
@@ -181,19 +208,23 @@ export const updateOrganization = async (req: Request, res: Response, next: Next
       });
     }
 
-    await organization.update({
-      name,
-      type,
-      email,
-      phone,
-      contactPerson,
-      updatedBy: req.user!.id
+    const updatedOrg = await prisma.organization.update({
+      where: { id },
+      data: {
+        name,
+        type,
+        sector,
+        registrationNo,
+        contactEmail,
+        contactPhone,
+        address
+      }
     });
 
     res.json({
       success: true,
       message: 'Organization updated successfully',
-      data: { organization }
+      data: { organization: updatedOrg }
     });
 
     console.log('✅ Organization updated:', id);
@@ -209,7 +240,9 @@ export const toggleOrganizationStatus = async (req: Request, res: Response, next
     const { id } = req.params;
     const { isActive } = req.body;
 
-    const organization = await Organization.findByPk(id);
+    const organization = await prisma.organization.findUnique({
+      where: { id }
+    });
 
     if (!organization) {
       return res.status(404).json({
@@ -218,15 +251,15 @@ export const toggleOrganizationStatus = async (req: Request, res: Response, next
       });
     }
 
-    await organization.update({ 
-      isActive,
-      updatedBy: req.user!.id
+    const updatedOrg = await prisma.organization.update({
+      where: { id },
+      data: { isActive }
     });
 
     res.json({
       success: true,
       message: `Organization ${isActive ? 'activated' : 'deactivated'} successfully`,
-      data: { organization }
+      data: { organization: updatedOrg }
     });
 
     console.log(`✅ Organization ${isActive ? 'activated' : 'deactivated'}:`, id);
@@ -241,7 +274,13 @@ export const deleteOrganization = async (req: Request, res: Response, next: Next
   try {
     const { id } = req.params;
 
-    const organization = await Organization.findByPk(id);
+    const organization = await prisma.organization.findUnique({
+      where: { id },
+      include: {
+        submissions: true,
+        users: true
+      }
+    });
 
     if (!organization) {
       return res.status(404).json({
@@ -251,11 +290,7 @@ export const deleteOrganization = async (req: Request, res: Response, next: Next
     }
 
     // Check if organization has submissions
-    const submissionCount = await Submission.count({
-      where: { organizationId: id }
-    });
-
-    if (submissionCount > 0) {
+    if (organization.submissions.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'Cannot delete organization with existing submissions'
@@ -263,18 +298,16 @@ export const deleteOrganization = async (req: Request, res: Response, next: Next
     }
 
     // Check if organization has users
-    const userCount = await User.count({
-      where: { organizationId: id }
-    });
-
-    if (userCount > 0) {
+    if (organization.users.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'Cannot delete organization with existing users'
       });
     }
 
-    await organization.destroy();
+    await prisma.organization.delete({
+      where: { id }
+    });
 
     res.json({
       success: true,
@@ -294,7 +327,16 @@ export const getOrganizationStatistics = async (req: Request, res: Response, nex
     const { id } = req.params;
     const { year = new Date().getFullYear() } = req.query;
 
-    const organization = await Organization.findByPk(id);
+    const organization = await prisma.organization.findUnique({
+      where: { id },
+      include: {
+        submissions: {
+          where: {
+            year: parseInt(year as string)
+          }
+        }
+      }
+    });
 
     if (!organization) {
       return res.status(404).json({
@@ -304,20 +346,14 @@ export const getOrganizationStatistics = async (req: Request, res: Response, nex
     }
 
     // Check access
-    if (req.user!.role !== 'fia_admin' && req.user!.organizationId !== id) {
+    if (req.user!.role !== 'FIA_ADMIN' && req.user!.organizationId !== id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
       });
     }
 
-    // Get submissions for the year
-    const submissions = await Submission.findAll({
-      where: { 
-        organizationId: id,
-        year: parseInt(year as string)
-      }
-    });
+    const submissions = organization.submissions;
 
     // Calculate monthly statistics
     const monthlyStats = Array.from({ length: 12 }, (_, i) => {
@@ -335,8 +371,9 @@ export const getOrganizationStatistics = async (req: Request, res: Response, nex
 
     // Calculate aggregate metrics from submissions
     const totalSTRs = submissions.reduce((sum, s) => {
-      const strIndicator = s.indicators.find((i: any) => i.number === '1.1');
-      return sum + (strIndicator ? parseFloat(strIndicator.value) || 0 : 0);
+      const indicators = s.indicators as any;
+      const strValue = indicators['1.1'];
+      return sum + (strValue ? parseFloat(strValue) || 0 : 0);
     }, 0);
 
     const statistics = {
@@ -347,10 +384,10 @@ export const getOrganizationStatistics = async (req: Request, res: Response, nex
       },
       year: parseInt(year as string),
       totalSubmissions: submissions.length,
-      completedSubmissions: submissions.filter(s => s.status === 'approved').length,
-      pendingSubmissions: submissions.filter(s => s.status === 'submitted').length,
-      rejectedSubmissions: submissions.filter(s => s.status === 'rejected').length,
-      draftSubmissions: submissions.filter(s => s.status === 'draft').length,
+      completedSubmissions: submissions.filter(s => s.status === 'APPROVED').length,
+      pendingSubmissions: submissions.filter(s => s.status === 'SUBMITTED').length,
+      rejectedSubmissions: submissions.filter(s => s.status === 'REJECTED').length,
+      draftSubmissions: submissions.filter(s => s.status === 'DRAFT').length,
       avgCompletionRate: Math.round(
         submissions.reduce((sum, s) => sum + s.completionRate, 0) / (submissions.length || 1)
       ),

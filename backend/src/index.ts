@@ -6,16 +6,13 @@ import path from 'path';
 import authRoutes from './routes/authRoutes';
 import submissionRoutes from './routes/submissionRoutes';
 import organizationRoutes from './routes/organizationRoutes';
-import chatRoutes from './routes/chat.routes'; 
-import { sequelize, testConnection, syncDatabase } from './config/database';
-import { User } from './models/User';
-import { Organization } from './models/Organization';
-import { Submission } from './models/Submission';
+import chatRoutes from './routes/chat.routes';
+import prisma, { testConnection } from './config/prisma'; 
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
@@ -32,69 +29,35 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/organizations', organizationRoutes);
-app.use('/api/chat', chatRoutes); // 🔥 ADD CHAT ROUTES
+app.use('/api/chat', chatRoutes);
 
-// Health check route
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: '🇺🇬 AML/CFT Statistics API is running!',
-    timestamp: new Date().toISOString()
-  });
+// Health check route with database status
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database connection with Prisma
+    await prisma.$queryRaw`SELECT 1`;
+    
+    res.json({ 
+      success: true, 
+      message: '🇺🇬 AML/CFT Statistics API is running!',
+      database: 'Connected ✅',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'API running but database connection failed',
+      database: 'Disconnected ❌',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
-
-// 🔥 Define Model Associations
-const setupAssociations = () => {
-  // User belongs to Organization
-  User.belongsTo(Organization, { 
-    foreignKey: 'organizationId',
-    as: 'organization' 
-  });
-  
-  // Organization has many Users
-  Organization.hasMany(User, { 
-    foreignKey: 'organizationId',
-    as: 'users'
-  });
-
-  // Submission belongs to Organization
-  Submission.belongsTo(Organization, { 
-    foreignKey: 'organizationId',
-    as: 'organization'
-  });
-  
-  // Organization has many Submissions
-  Organization.hasMany(Submission, { 
-    foreignKey: 'organizationId',
-    as: 'submissions'
-  });
-
-  // Submission belongs to User (submitter)
-  Submission.belongsTo(User, { 
-    foreignKey: 'submittedBy', 
-    as: 'submitter' 
-  });
-  
-  // Submission belongs to User (reviewer)
-  Submission.belongsTo(User, { 
-    foreignKey: 'reviewedBy', 
-    as: 'reviewer' 
-  });
-
-  console.log('✅ Model associations configured');
-};
 
 // Start server
 const startServer = async () => {
   try {
-    // Test database connection
+    // Test Prisma database connection
     await testConnection();
-    
-    // Setup model associations
-    setupAssociations();
-    
-    // Sync database
-    await syncDatabase();
 
     // Start listening
     app.listen(PORT, () => {
@@ -105,7 +68,8 @@ const startServer = async () => {
       console.log(`🔐 Login: POST http://localhost:${PORT}/api/auth/login`);
       console.log(`🏢 Organizations: http://localhost:${PORT}/api/organizations`);
       console.log(`📊 Submissions: http://localhost:${PORT}/api/submissions`);
-      console.log(`💬 Chat: http://localhost:${PORT}/api/chat`); // 🔥 ADD THIS
+      console.log(`💬 Chat: http://localhost:${PORT}/api/chat`);
+      console.log(`🗄️  Database: Prisma + PostgreSQL`);
       console.log('🇺🇬 ================================');
     });
   } catch (error) {
@@ -113,6 +77,19 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n👋 Shutting down gracefully...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n👋 Shutting down gracefully...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
 
 startServer();
 

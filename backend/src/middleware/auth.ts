@@ -1,8 +1,7 @@
 // backend/src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
-import { User } from '../models/User';
-import { Organization } from '../models/Organization';
+import prisma from '../config/prisma'; // 🔥 PRISMA IMPORT
 
 // Extend Express Request type
 declare global {
@@ -12,7 +11,7 @@ declare global {
         id: string;
         email: string;
         role: string;
-        organizationId?: string;
+        organizationId?: string | null;
       };
     }
   }
@@ -31,14 +30,22 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     }
 
     const token = authHeader.substring(7);
-    const decoded = verifyToken(token) as any; // ✅ Cast to 'any' to handle different payload types
+    const decoded = verifyToken(token) as any;
 
-    const user = await User.findByPk(decoded.id, {
-      include: [{ 
-        model: Organization,
-        as: 'organization',
-        attributes: ['id', 'code', 'name', 'type', 'isActive']
-      }]
+    // Find user with Prisma
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      include: { 
+        organization: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true,
+            isActive: true
+          }
+        }
+      }
     });
 
     if (!user) {
@@ -52,6 +59,14 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
       return res.status(403).json({
         success: false,
         message: 'Account is inactive'
+      });
+    }
+
+    // Check if organization is active (if user has one)
+    if (user.organization && !user.organization.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'Organization is inactive'
       });
     }
 
@@ -96,7 +111,7 @@ export const adminMiddleware = (req: Request, res: Response, next: NextFunction)
     });
   }
 
-  if (req.user.role !== 'fia_admin') {
+  if (req.user.role !== 'FIA_ADMIN') { // 🔥 UPPERCASE
     return res.status(403).json({
       success: false,
       message: 'Admin access required'
@@ -115,7 +130,7 @@ export const orgAdminMiddleware = (req: Request, res: Response, next: NextFuncti
     });
   }
 
-  if (req.user.role !== 'org_admin' && req.user.role !== 'fia_admin') {
+  if (req.user.role !== 'ORG_ADMIN' && req.user.role !== 'FIA_ADMIN') { // 🔥 UPPERCASE
     return res.status(403).json({
       success: false,
       message: 'Organization admin access required'

@@ -2,21 +2,20 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import { generateToken, verifyToken } from '../utils/jwt';
-import { User } from '../models/User';
-import { Organization } from '../models/Organization';
+import prisma from '../config/prisma'; 
 
 // 🔥 LOGIN
 export const login = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = req.body;
 
-    // Find user
-    const user = await User.findOne({ 
-      where: { email, isActive: true },
-      include: [{ model: Organization }]
+    // Find user with Prisma
+    const user = await prisma.user.findUnique({ 
+      where: { email },
+      include: { organization: true }
     });
 
-    if (!user) {
+    if (!user || !user.isActive) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -39,7 +38,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         id: user.id, 
         email: user.email, 
         role: user.role,
-        organizationId: user.organizationId 
+        organizationId: user.organizationId ?? undefined // 🔥 FIX: Convert null to undefined
       },
       '15m' // Access token expires in 15 minutes
     );
@@ -49,8 +48,11 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       '7d' // Refresh token expires in 7 days
     );
 
-    // Update last login
-    await user.update({ lastLoginAt: new Date() });
+    // Update last login with Prisma
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() }
+    });
 
     // Remove password from response
     const userResponse = {
@@ -87,7 +89,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const { email, password, name, role, organizationId } = req.body;
 
     // Check if user exists
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await prisma.user.findUnique({ 
+      where: { email } 
+    });
     
     if (existingUser) {
       return res.status(409).json({
@@ -99,19 +103,17 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
-    const user = await User.create({
-      email,
-      password: hashedPassword,
-      name,
-      role,
-      organizationId,
-      isActive: true
-    });
-
-    // Get user with organization
-    const userWithOrg = await User.findByPk(user.id, {
-      include: [{ model: Organization }]
+    // Create user with Prisma
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+        role,
+        organizationId,
+        isActive: true
+      },
+      include: { organization: true }
     });
 
     // Generate tokens
@@ -120,7 +122,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         id: user.id, 
         email: user.email, 
         role: user.role,
-        organizationId: user.organizationId 
+        organizationId: user.organizationId ?? undefined // 🔥 FIX: Convert null to undefined
       },
       '15m'
     );
@@ -132,14 +134,14 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     // Remove password from response
     const userResponse = {
-      id: userWithOrg!.id,
-      email: userWithOrg!.email,
-      name: userWithOrg!.name,
-      role: userWithOrg!.role,
-      organizationId: userWithOrg!.organizationId,
-      organization: userWithOrg!.organization,
-      isActive: userWithOrg!.isActive,
-      createdAt: userWithOrg!.createdAt
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      organizationId: user.organizationId,
+      organization: user.organization,
+      isActive: user.isActive,
+      createdAt: user.createdAt
     };
 
     res.status(201).json({
@@ -174,9 +176,10 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
     // Verify refresh token
     const decoded = verifyToken(refreshToken);
 
-    // Get user
-    const user = await User.findByPk(decoded.id, {
-      include: [{ model: Organization }]
+    // Get user with Prisma
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      include: { organization: true }
     });
 
     if (!user || !user.isActive) {
@@ -192,7 +195,7 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
         id: user.id, 
         email: user.email, 
         role: user.role,
-        organizationId: user.organizationId 
+        organizationId: user.organizationId ?? undefined // 🔥 FIX: Convert null to undefined
       },
       '15m'
     );
@@ -235,8 +238,9 @@ export const logout = async (req: Request, res: Response, next: NextFunction) =>
 // 🔥 GET CURRENT USER
 export const getCurrentUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const user = await User.findByPk(req.user!.id, {
-      include: [{ model: Organization }]
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      include: { organization: true }
     });
 
     if (!user) {
@@ -256,7 +260,7 @@ export const getCurrentUser = async (req: Request, res: Response, next: NextFunc
       organization: user.organization,
       isActive: user.isActive,
       createdAt: user.createdAt,
-      lastLoginAt: user.lastLoginAt
+      lastLogin: user.lastLogin
     };
 
     res.json({
@@ -274,7 +278,9 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
   try {
     const { email } = req.body;
 
-    const user = await User.findOne({ where: { email } });
+    const user = await prisma.user.findUnique({ 
+      where: { email } 
+    });
 
     if (!user) {
       // Don't reveal if user exists
@@ -313,7 +319,9 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
     const decoded = verifyToken(token);
 
     // Get user
-    const user = await User.findByPk(decoded.id);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id }
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -325,8 +333,11 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update password
-    await user.update({ password: hashedPassword });
+    // Update password with Prisma
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword }
+    });
 
     res.json({
       success: true,
@@ -348,7 +359,9 @@ export const changePassword = async (req: Request, res: Response, next: NextFunc
   try {
     const { currentPassword, newPassword } = req.body;
 
-    const user = await User.findByPk(req.user!.id);
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id }
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -370,8 +383,11 @@ export const changePassword = async (req: Request, res: Response, next: NextFunc
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update password
-    await user.update({ password: hashedPassword });
+    // Update password with Prisma
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword }
+    });
 
     res.json({
       success: true,

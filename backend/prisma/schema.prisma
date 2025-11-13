@@ -1,0 +1,332 @@
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(ORG_USER)
+  isActive  Boolean  @default(true)
+  
+  // Organization relationship
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  
+  // Relationships
+  submissions        Submission[]   @relation("SubmittedBy")
+  reviewedSubmissions Submission[]  @relation("ReviewedBy")
+  notifications      Notification[]
+  auditLogs         AuditLog[]
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLogin DateTime?
+  
+  @@index([email])
+  @@index([organizationId])
+  @@map("users")
+}
+
+enum UserRole {
+  FIA_ADMIN
+  ORG_ADMIN
+  ORG_USER
+}
+
+// ============================================
+// ORGANIZATIONS
+// ============================================
+
+model Organization {
+  id               String   @id @default(uuid())
+  name             String
+  code             String   @unique
+  type             OrgType
+  sector           String?
+  registrationNo   String?
+  contactEmail     String
+  contactPhone     String?
+  address          String?
+  isActive         Boolean  @default(true)
+  
+  // Compliance tracking
+  complianceScore     Int      @default(0)
+  completedSubmissions Int     @default(0)
+  pendingSubmissions   Int     @default(0)
+  overdueSubmissions   Int     @default(0)
+  lastSubmissionDate   DateTime?
+  
+  // Relationships
+  users        User[]
+  submissions  Submission[]
+  
+  // Timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([code])
+  @@index([type])
+  @@map("organizations")
+}
+
+enum OrgType {
+  BANK
+  MOBILE_MONEY
+  MICROFINANCE
+  FOREX_BUREAU
+  INSURANCE
+  SACCO
+  SECURITIES
+  DNFBP
+  OTHER
+}
+
+// ============================================
+// SUBMISSIONS & STATISTICS
+// ============================================
+
+model Submission {
+  id              String           @id @default(uuid())
+  
+  // Organization
+  organizationId  String
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Submission details
+  month           Int              // 1-12
+  year            Int
+  status          SubmissionStatus @default(DRAFT)
+  
+  // Statistics data (JSON with all 1,061 indicators)
+  indicators      Json             // { "1.1": "value", "1.2": "value", ... }
+  
+  // Metadata
+  totalIndicators   Int
+  filledIndicators  Int
+  completionRate    Int            @default(0)
+  
+  // Submission tracking
+  submittedBy     String?
+  submitter       User?            @relation("SubmittedBy", fields: [submittedBy], references: [id], onDelete: SetNull)
+  submittedAt     DateTime?
+  
+  // Review tracking
+  reviewedBy      String?
+  reviewer        User?            @relation("ReviewedBy", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  
+  // Timestamps
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  
+  @@unique([organizationId, month, year])
+  @@index([organizationId])
+  @@index([status])
+  @@index([year, month])
+  @@map("submissions")
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+// ============================================
+// CHAT SYSTEM
+// ============================================
+
+model Conversation {
+  id              String             @id @default(uuid())
+  type            ConversationType
+  
+  // Participants (stored as JSON array)
+  participants    Json               // [{ id, name, type, orgCode }]
+  
+  // Relationships
+  messages        Message[]
+  
+  // Timestamps
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  lastMessageAt   DateTime           @default(now())
+  
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+enum ConversationType {
+  ADMIN_TO_ORG
+  ORG_TO_ORG
+}
+
+model Message {
+  id              String       @id @default(uuid())
+  
+  // Conversation
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  // Sender info
+  senderId        String
+  senderName      String
+  senderType      SenderType
+  senderOrgCode   String?
+  
+  // Message content
+  content         String       @db.Text
+  messageType     MessageType  @default(TEXT)
+  
+  // Read tracking (array of user IDs who read this)
+  readBy          Json         @default("[]")
+  
+  // Relationships
+  attachments     Attachment[]
+  
+  // Timestamps
+  createdAt       DateTime     @default(now())
+  
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+enum SenderType {
+  ADMIN
+  ORGANIZATION
+}
+
+enum MessageType {
+  TEXT
+  FILE
+  IMAGE
+  AUDIO
+}
+
+model Attachment {
+  id          String   @id @default(uuid())
+  
+  // Message
+  messageId   String
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  // File info
+  fileName    String
+  fileType    FileType
+  fileUrl     String
+  fileSize    Int
+  
+  // Timestamps
+  uploadedAt  DateTime @default(now())
+  
+  @@index([messageId])
+  @@map("attachments")
+}
+
+enum FileType {
+  IMAGE
+  PDF
+  DOCUMENT
+  EXCEL
+  AUDIO
+  VIDEO
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id          String           @id @default(uuid())
+  
+  // Recipient
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Notification details
+  type        NotificationType
+  title       String
+  message     String           @db.Text
+  priority    Priority         @default(MEDIUM)
+  
+  // Metadata (JSON for additional data)
+  metadata    Json?
+  
+  // Status
+  isRead      Boolean          @default(false)
+  readAt      DateTime?
+  
+  // Timestamps
+  createdAt   DateTime         @default(now())
+  
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  SUBMISSION_DUE
+  SUBMISSION_OVERDUE
+  SUBMISSION_APPROVED
+  SUBMISSION_REJECTED
+  NEW_MESSAGE
+  SYSTEM_ALERT
+  COMPLIANCE_WARNING
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ============================================
+// AUDIT LOGS
+// ============================================
+
+model AuditLog {
+  id          String       @id @default(uuid())
+  
+  // User who performed action
+  userId      String?
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  // Action details
+  action      String       // e.g., "CREATE_SUBMISSION", "UPDATE_USER"
+  entity      String       // e.g., "Submission", "User"
+  entityId    String?      // ID of affected entity
+  
+  // Details (JSON for old/new values)
+  details     Json?
+  
+  // Request info
+  ipAddress   String?
+  userAgent   String?
+  
+  // Timestamp
+  createdAt   DateTime     @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

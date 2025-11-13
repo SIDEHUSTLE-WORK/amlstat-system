@@ -1,15 +1,13 @@
 // src/controllers/submissionController.ts
 import { Request, Response, NextFunction } from 'express';
-import { Submission } from '../models/Submission';
-import { Organization } from '../models/Organization';
-import { User } from '../models/User';
-import { Op } from 'sequelize';
+import prisma from '../config/prisma'; 
 
 // 📊 GET ALL SUBMISSIONS (Admin)
 export const getAllSubmissions = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status, month, year, organizationId, page = 1, limit = 20 } = req.query;
 
+    // Build Prisma where clause
     const where: any = {};
 
     if (status) where.status = status;
@@ -19,23 +17,33 @@ export const getAllSubmissions = async (req: Request, res: Response, next: NextF
 
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    const { count, rows: submissions } = await Submission.findAndCountAll({
-      where,
-      include: [
-        { 
-          model: Organization,
-          attributes: ['id', 'code', 'name', 'type']
+    // Get count and submissions
+    const [count, submissions] = await Promise.all([
+      prisma.submission.count({ where }),
+      prisma.submission.findMany({
+        where,
+        include: {
+          organization: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              type: true
+            }
+          },
+          submitter: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
         },
-        {
-          model: User,
-          as: 'submitter',
-          attributes: ['id', 'name', 'email']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit as string),
-      offset
-    });
+        orderBy: { createdAt: 'desc' },
+        take: parseInt(limit as string),
+        skip: offset
+      })
+    ]);
 
     res.json({
       success: true,
@@ -69,20 +77,29 @@ export const getSubmissionsByOrg = async (req: Request, res: Response, next: Nex
     if (month) where.month = parseInt(month as string);
     if (year) where.year = parseInt(year as string);
 
-    const submissions = await Submission.findAll({
+    const submissions = await prisma.submission.findMany({
       where,
-      include: [
-        { 
-          model: Organization,
-          attributes: ['id', 'code', 'name', 'type']
+      include: {
+        organization: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true
+          }
         },
-        {
-          model: User,
-          as: 'submitter',
-          attributes: ['id', 'name', 'email']
+        submitter: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
         }
-      ],
-      order: [['year', 'DESC'], ['month', 'DESC']]
+      },
+      orderBy: [
+        { year: 'desc' },
+        { month: 'desc' }
+      ]
     });
 
     res.json({
@@ -102,23 +119,34 @@ export const getSubmissionById = async (req: Request, res: Response, next: NextF
   try {
     const { id } = req.params;
 
-    const submission = await Submission.findByPk(id, {
-      include: [
-        { 
-          model: Organization,
-          attributes: ['id', 'code', 'name', 'type', 'contactPerson', 'email', 'phone']
+    const submission = await prisma.submission.findUnique({
+      where: { id },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true,
+            contactEmail: true,
+            contactPhone: true
+          }
         },
-        {
-          model: User,
-          as: 'submitter',
-          attributes: ['id', 'name', 'email']
+        submitter: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
         },
-        {
-          model: User,
-          as: 'reviewer',
-          attributes: ['id', 'name', 'email']
+        reviewer: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
         }
-      ]
+      }
     });
 
     if (!submission) {
@@ -129,7 +157,7 @@ export const getSubmissionById = async (req: Request, res: Response, next: NextF
     }
 
     // Check access
-    if (req.user!.role !== 'fia_admin' && submission.organizationId !== req.user!.organizationId) {
+    if (req.user!.role !== 'FIA_ADMIN' && submission.organizationId !== req.user!.organizationId) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -162,8 +190,12 @@ export const createSubmission = async (req: Request, res: Response, next: NextFu
     }
 
     // Check if submission already exists for this month/year
-    const existingSubmission = await Submission.findOne({
-      where: { organizationId, month, year }
+    const existingSubmission = await prisma.submission.findFirst({
+      where: { 
+        organizationId, 
+        month, 
+        year 
+      }
     });
 
     if (existingSubmission) {
@@ -174,38 +206,43 @@ export const createSubmission = async (req: Request, res: Response, next: NextFu
     }
 
     // Calculate filled indicators and completion rate
-    const filledIndicators = indicators.filter((ind: any) => 
-      ind.value !== null && ind.value !== undefined && ind.value !== ''
+    const indicatorObj = indicators as Record<string, any>;
+    const indicatorValues = Object.values(indicatorObj);
+    const filledIndicators = indicatorValues.filter((val: any) => 
+      val !== null && val !== undefined && val !== ''
     ).length;
-    const totalIndicators = indicators.length;
+    const totalIndicators = indicatorValues.length;
     const completionRate = Math.round((filledIndicators / totalIndicators) * 100);
 
     // Create submission
-    const submission = await Submission.create({
-      organizationId,
-      month,
-      year,
-      status: 'draft',
-      indicators,
-      filledIndicators,
-      totalIndicators,
-      completionRate,
-      submittedBy: req.user!.id,
-      createdBy: req.user!.id
-    });
-
-    // Get submission with relations
-    const submissionWithRelations = await Submission.findByPk(submission.id, {
-      include: [
-        { model: Organization },
-        { model: User, as: 'submitter', attributes: ['id', 'name', 'email'] }
-      ]
+    const submission = await prisma.submission.create({
+      data: {
+        organizationId,
+        month,
+        year,
+        status: 'DRAFT',
+        indicators: indicators, // JSON field
+        filledIndicators,
+        totalIndicators,
+        completionRate,
+        submittedBy: req.user!.id
+      },
+      include: {
+        organization: true,
+        submitter: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
     });
 
     res.status(201).json({
       success: true,
       message: 'Submission created successfully',
-      data: { submission: submissionWithRelations }
+      data: { submission }
     });
 
     console.log('✅ Submission created:', submission.id);
@@ -221,7 +258,9 @@ export const updateSubmission = async (req: Request, res: Response, next: NextFu
     const { id } = req.params;
     const { indicators } = req.body;
 
-    const submission = await Submission.findByPk(id);
+    const submission = await prisma.submission.findUnique({
+      where: { id }
+    });
 
     if (!submission) {
       return res.status(404).json({
@@ -239,7 +278,7 @@ export const updateSubmission = async (req: Request, res: Response, next: NextFu
     }
 
     // Can only update drafts or rejected submissions
-    if (submission.status !== 'draft' && submission.status !== 'rejected') {
+    if (submission.status !== 'DRAFT' && submission.status !== 'REJECTED') {
       return res.status(400).json({
         success: false,
         message: 'Can only update draft or rejected submissions'
@@ -247,29 +286,35 @@ export const updateSubmission = async (req: Request, res: Response, next: NextFu
     }
 
     // Calculate filled indicators and completion rate
-    const filledIndicators = indicators.filter((ind: any) => 
-      ind.value !== null && ind.value !== undefined && ind.value !== ''
+    const indicatorObj = indicators as Record<string, any>;
+    const indicatorValues = Object.values(indicatorObj);
+    const filledIndicators = indicatorValues.filter((val: any) => 
+      val !== null && val !== undefined && val !== ''
     ).length;
-    const totalIndicators = indicators.length;
+    const totalIndicators = indicatorValues.length;
     const completionRate = Math.round((filledIndicators / totalIndicators) * 100);
 
     // Update submission
-    await submission.update({
-      indicators,
-      filledIndicators,
-      totalIndicators,
-      completionRate,
-      status: 'draft', // Reset to draft if it was rejected
-      rejectionReason: undefined, // Clear rejection reason
-      updatedBy: req.user!.id
-    });
-
-    // Get updated submission with relations
-    const updatedSubmission = await Submission.findByPk(id, {
-      include: [
-        { model: Organization },
-        { model: User, as: 'submitter', attributes: ['id', 'name', 'email'] }
-      ]
+    const updatedSubmission = await prisma.submission.update({
+      where: { id },
+      data: {
+        indicators: indicators,
+        filledIndicators,
+        totalIndicators,
+        completionRate,
+        status: 'DRAFT', // Reset to draft if it was rejected
+        reviewNotes: null // Clear rejection reason
+      },
+      include: {
+        organization: true,
+        submitter: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
     });
 
     res.json({
@@ -290,7 +335,9 @@ export const submitForReview = async (req: Request, res: Response, next: NextFun
   try {
     const { id } = req.params;
 
-    const submission = await Submission.findByPk(id);
+    const submission = await prisma.submission.findUnique({
+      where: { id }
+    });
 
     if (!submission) {
       return res.status(404).json({
@@ -308,7 +355,7 @@ export const submitForReview = async (req: Request, res: Response, next: NextFun
     }
 
     // Can only submit drafts or rejected submissions
-    if (submission.status !== 'draft' && submission.status !== 'rejected') {
+    if (submission.status !== 'DRAFT' && submission.status !== 'REJECTED') {
       return res.status(400).json({
         success: false,
         message: 'Can only submit draft or rejected submissions'
@@ -324,16 +371,19 @@ export const submitForReview = async (req: Request, res: Response, next: NextFun
     }
 
     // Update status to submitted
-    await submission.update({
-      status: 'submitted',
-      submittedAt: new Date(),
-      submittedBy: req.user!.id
+    const updatedSubmission = await prisma.submission.update({
+      where: { id },
+      data: {
+        status: 'SUBMITTED',
+        submittedAt: new Date(),
+        submittedBy: req.user!.id
+      }
     });
 
     res.json({
       success: true,
       message: 'Submission sent for review',
-      data: { submission }
+      data: { submission: updatedSubmission }
     });
 
     console.log('✅ Submission submitted for review:', id);
@@ -349,8 +399,9 @@ export const approveSubmission = async (req: Request, res: Response, next: NextF
     const { id } = req.params;
     const { comments } = req.body;
 
-    const submission = await Submission.findByPk(id, {
-      include: [{ model: Organization }]
+    const submission = await prisma.submission.findUnique({
+      where: { id },
+      include: { organization: true }
     });
 
     if (!submission) {
@@ -361,7 +412,7 @@ export const approveSubmission = async (req: Request, res: Response, next: NextF
     }
 
     // Can only approve submitted submissions
-    if (submission.status !== 'submitted') {
+    if (submission.status !== 'SUBMITTED') {
       return res.status(400).json({
         success: false,
         message: 'Can only approve submitted submissions'
@@ -369,11 +420,14 @@ export const approveSubmission = async (req: Request, res: Response, next: NextF
     }
 
     // Update submission
-    await submission.update({
-      status: 'approved',
-      approvedAt: new Date(),
-      approvedBy: req.user!.id,
-      comments
+    const updatedSubmission = await prisma.submission.update({
+      where: { id },
+      data: {
+        status: 'APPROVED',
+        reviewedAt: new Date(),
+        reviewedBy: req.user!.id,
+        reviewNotes: comments
+      }
     });
 
     // TODO: Send notification to organization
@@ -381,7 +435,7 @@ export const approveSubmission = async (req: Request, res: Response, next: NextF
     res.json({
       success: true,
       message: 'Submission approved successfully',
-      data: { submission }
+      data: { submission: updatedSubmission }
     });
 
     console.log('✅ Submission approved:', id, 'by:', req.user!.email);
@@ -404,8 +458,9 @@ export const rejectSubmission = async (req: Request, res: Response, next: NextFu
       });
     }
 
-    const submission = await Submission.findByPk(id, {
-      include: [{ model: Organization }]
+    const submission = await prisma.submission.findUnique({
+      where: { id },
+      include: { organization: true }
     });
 
     if (!submission) {
@@ -416,7 +471,7 @@ export const rejectSubmission = async (req: Request, res: Response, next: NextFu
     }
 
     // Can only reject submitted submissions
-    if (submission.status !== 'submitted') {
+    if (submission.status !== 'SUBMITTED') {
       return res.status(400).json({
         success: false,
         message: 'Can only reject submitted submissions'
@@ -424,12 +479,14 @@ export const rejectSubmission = async (req: Request, res: Response, next: NextFu
     }
 
     // Update submission
-    await submission.update({
-      status: 'rejected',
-      rejectionReason: reason,
-      comments: reason,
-      reviewedAt: new Date(),
-      reviewedBy: req.user!.id
+    const updatedSubmission = await prisma.submission.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        reviewNotes: reason,
+        reviewedAt: new Date(),
+        reviewedBy: req.user!.id
+      }
     });
 
     // TODO: Send notification to organization
@@ -437,7 +494,7 @@ export const rejectSubmission = async (req: Request, res: Response, next: NextFu
     res.json({
       success: true,
       message: 'Submission rejected',
-      data: { submission }
+      data: { submission: updatedSubmission }
     });
 
     console.log('❌ Submission rejected:', id, 'by:', req.user!.email);
@@ -452,7 +509,9 @@ export const deleteSubmission = async (req: Request, res: Response, next: NextFu
   try {
     const { id } = req.params;
 
-    const submission = await Submission.findByPk(id);
+    const submission = await prisma.submission.findUnique({
+      where: { id }
+    });
 
     if (!submission) {
       return res.status(404).json({
@@ -463,7 +522,7 @@ export const deleteSubmission = async (req: Request, res: Response, next: NextFu
 
     // Check access
     const hasAccess = 
-      req.user!.role === 'fia_admin' || 
+      req.user!.role === 'FIA_ADMIN' || 
       submission.organizationId === req.user!.organizationId;
 
     if (!hasAccess) {
@@ -474,14 +533,16 @@ export const deleteSubmission = async (req: Request, res: Response, next: NextFu
     }
 
     // Can only delete drafts
-    if (submission.status !== 'draft') {
+    if (submission.status !== 'DRAFT') {
       return res.status(400).json({
         success: false,
         message: 'Can only delete draft submissions'
       });
     }
 
-    await submission.destroy();
+    await prisma.submission.delete({
+      where: { id }
+    });
 
     res.json({
       success: true,
@@ -504,19 +565,19 @@ export const getSubmissionStatistics = async (req: Request, res: Response, next:
     
     if (organizationId) {
       where.organizationId = organizationId;
-    } else if (req.user!.role !== 'fia_admin') {
+    } else if (req.user!.role !== 'FIA_ADMIN') {
       where.organizationId = req.user!.organizationId;
     }
 
-    const submissions = await Submission.findAll({ where });
+    const submissions = await prisma.submission.findMany({ where });
 
     const statistics = {
       total: submissions.length,
       byStatus: {
-        draft: submissions.filter(s => s.status === 'draft').length,
-        submitted: submissions.filter(s => s.status === 'submitted').length,
-        approved: submissions.filter(s => s.status === 'approved').length,
-        rejected: submissions.filter(s => s.status === 'rejected').length
+        draft: submissions.filter(s => s.status === 'DRAFT').length,
+        submitted: submissions.filter(s => s.status === 'SUBMITTED').length,
+        approved: submissions.filter(s => s.status === 'APPROVED').length,
+        rejected: submissions.filter(s => s.status === 'REJECTED').length
       },
       byMonth: Array.from({ length: 12 }, (_, i) => ({
         month: i + 1,

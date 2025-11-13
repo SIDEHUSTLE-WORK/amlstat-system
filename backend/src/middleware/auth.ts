@@ -1,0 +1,126 @@
+// backend/src/middleware/auth.ts
+import { Request, Response, NextFunction } from 'express';
+import { verifyToken } from '../utils/jwt';
+import { User } from '../models/User';
+import { Organization } from '../models/Organization';
+
+// Extend Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        email: string;
+        role: string;
+        organizationId?: string;
+      };
+    }
+  }
+}
+
+// 🔐 AUTH MIDDLEWARE
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const decoded = verifyToken(token) as any; // ✅ Cast to 'any' to handle different payload types
+
+    const user = await User.findByPk(decoded.id, {
+      include: [{ 
+        model: Organization,
+        as: 'organization',
+        attributes: ['id', 'code', 'name', 'type', 'isActive']
+      }]
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account is inactive'
+      });
+    }
+
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      organizationId: user.organizationId
+    };
+
+    next();
+  } catch (error: any) {
+    console.error('❌ Auth middleware error:', error);
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Token expired'
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Authentication failed'
+    });
+  }
+};
+
+// 🔐 ADMIN MIDDLEWARE
+export const adminMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Not authenticated'
+    });
+  }
+
+  if (req.user.role !== 'fia_admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Admin access required'
+    });
+  }
+
+  next();
+};
+
+// 🔐 ORG ADMIN MIDDLEWARE
+export const orgAdminMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Not authenticated'
+    });
+  }
+
+  if (req.user.role !== 'org_admin' && req.user.role !== 'fia_admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Organization admin access required'
+    });
+  }
+
+  next();
+};

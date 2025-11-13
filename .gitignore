@@ -1,0 +1,92 @@
+# ==========================
+# Dependencies
+# ==========================
+node_modules/
+.pnp/
+.pnp.js
+
+# ==========================
+# Build & Production
+# ==========================
+build/
+dist/
+.next/
+out/
+.tmp/
+temp/
+.cache/
+
+# ==========================
+# Testing
+# ==========================
+coverage/
+jest-cache/
+jest-html-reporters-*
+
+# ==========================
+# Environment & Config
+# ==========================
+.env
+.env.*
+!.env.example
+
+# ==========================
+# Logs & Debug
+# ==========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ==========================
+# Editors & OS
+# ==========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==========================
+# Databases
+# ==========================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==========================
+# Uploads & Runtime Data
+# ==========================
+uploads/
+public/uploads/
+storage/
+*.pid
+*.seed
+
+
+# ==========================
+# Uploads & Runtime Data
+# ==========================
+uploads/
+public/uploads/
+storage/
+*.pid
+*.seed
+
+# But keep the uploads directory structure
+!uploads/.gitkeep
+!backend/uploads/.gitkeep
+
+
+# ==========================
+# Package Managers
+# ==========================
+# Ignore lockfiles if using multiple package managers
+# (optional — uncomment as needed)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml

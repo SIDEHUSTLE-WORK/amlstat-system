@@ -59,38 +59,31 @@ const startServer = async () => {
     // Test Prisma database connection
     await testConnection();
 
-    // Start listening
-    app.listen(PORT, () => {
+    // Start listening - proper TypeScript way
+    const server = app.listen(Number(PORT), '0.0.0.0', () => {
       console.log('🇺🇬 ================================');
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📍 http://localhost:${PORT}`);
-      console.log(`✅ API Health: http://localhost:${PORT}/api/health`);
-      console.log(`🔐 Login: POST http://localhost:${PORT}/api/auth/login`);
-      console.log(`🏢 Organizations: http://localhost:${PORT}/api/organizations`);
-      console.log(`📊 Submissions: http://localhost:${PORT}/api/submissions`);
-      console.log(`💬 Chat: http://localhost:${PORT}/api/chat`);
+      console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`✅ API Health: /api/health`);
+      console.log(`🔐 Login: POST /api/auth/login`);
+      console.log(`🏢 Organizations: /api/organizations`);
+      console.log(`📊 Submissions: /api/submissions`);
+      console.log(`💬 Chat: /api/chat`);
       console.log(`🗄️  Database: Prisma + PostgreSQL`);
       console.log('🇺🇬 ================================');
     });
+
+    server.on('error', (error: any) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use`);
+      } else {
+        console.error('❌ Server error:', error);
+      }
+      process.exit(1);
+    });
+
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 };
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\n👋 Shutting down gracefully...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  console.log('\n👋 Shutting down gracefully...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
-startServer();
-
-export default app;

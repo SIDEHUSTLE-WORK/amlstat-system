@@ -23,7 +23,7 @@ import {
 } from 'recharts';
 import { exportComplianceReport, exportFinancialReport, exportToCSV, printReport } from '../../utils/exportUtils';
 import ReportFilters, { FilterState } from './components/ReportFilters';
-import ScheduleReport, { ReportSchedule } from './components/ScheduleReport.tsx';
+import ScheduleReport, { ReportSchedule } from './components/ScheduleReport';
 
 type ReportType = 'compliance' | 'financial' | 'trends' | 'comparative' | 'overview';
 type TimeRange = '3months' | '6months' | '1year' | 'custom';

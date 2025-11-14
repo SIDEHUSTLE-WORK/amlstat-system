@@ -1,5 +1,5 @@
 // backend/src/index.ts
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -12,7 +12,7 @@ import prisma, { testConnection } from './config/prisma';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Middleware
 app.use(cors({
@@ -22,7 +22,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 🔥 Serve uploaded files (for chat attachments)
+// Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes
@@ -31,10 +31,9 @@ app.use('/api/submissions', submissionRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/chat', chatRoutes);
 
-// Health check route with database status
-app.get('/api/health', async (req, res) => {
+// Health check route
+app.get('/api/health', async (req: Request, res: Response) => {
   try {
-    // Test database connection with Prisma
     await prisma.$queryRaw`SELECT 1`;
     
     res.json({ 
@@ -56,38 +55,47 @@ app.get('/api/health', async (req, res) => {
 // Start server
 const startServer = async () => {
   try {
+    console.log('🔄 Connecting to database...');
+    
     // Test Prisma database connection
     await testConnection();
 
+    console.log('✅ Starting Express server...');
+
     // Start listening
-    app.listen(PORT, () => {
+    const port = Number(PORT);
+    
+    app.listen(port, '0.0.0.0', () => {
       console.log('🇺🇬 ================================');
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📍 http://localhost:${PORT}`);
-      console.log(`✅ API Health: http://localhost:${PORT}/api/health`);
-      console.log(`🔐 Login: POST http://localhost:${PORT}/api/auth/login`);
-      console.log(`🏢 Organizations: http://localhost:${PORT}/api/organizations`);
-      console.log(`📊 Submissions: http://localhost:${PORT}/api/submissions`);
-      console.log(`💬 Chat: http://localhost:${PORT}/api/chat`);
+      console.log(`🚀 Server running on port ${port}`);
+      console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`✅ API Health: http://localhost:${port}/api/health`);
+      console.log(`🔐 Login: POST http://localhost:${port}/api/auth/login`);
+      console.log(`🏢 Organizations: http://localhost:${port}/api/organizations`);
+      console.log(`📊 Submissions: http://localhost:${port}/api/submissions`);
+      console.log(`💬 Chat: http://localhost:${port}/api/chat`);
       console.log(`🗄️  Database: Prisma + PostgreSQL`);
       console.log('🇺🇬 ================================');
     });
+
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 };
 
-// Graceful shutdown
+// Graceful shutdown - ONLY IN index.ts
 process.on('SIGINT', async () => {
-  console.log('\n👋 Shutting down gracefully...');
+  console.log('\n🛑 Received SIGINT, shutting down gracefully...');
   await prisma.$disconnect();
+  console.log('👋 Database connection closed');
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  console.log('\n👋 Shutting down gracefully...');
+  console.log('\n🛑 Received SIGTERM, shutting down gracefully...');
   await prisma.$disconnect();
+  console.log('👋 Database connection closed');
   process.exit(0);
 });
 

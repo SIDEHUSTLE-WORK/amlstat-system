@@ -25,9 +25,9 @@ export const disconnect = async () => {
   console.log('👋 Database connection closed');
 };
 
-// Handle shutdown gracefully
-process.on('beforeExit', async () => {
-  await disconnect();
-});
+// ❌ REMOVE THIS - IT'S CAUSING THE ISSUE!
+// process.on('beforeExit', async () => {
+//   await disconnect();
+// });
 
 export default prisma;

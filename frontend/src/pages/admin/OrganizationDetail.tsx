@@ -134,7 +134,7 @@ export default function OrganizationDetail() {
       compliance: orgSubmissions.find(s => s.month === 7)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 7).reduce((sum, s) => {
         const str = s.indicators.find(i => i.number === '1.1');
-        return sum + (str ? (parseFloat(str.value) || 0) : 0);
+        return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
     { 
@@ -143,7 +143,7 @@ export default function OrganizationDetail() {
       compliance: orgSubmissions.find(s => s.month === 8)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 8).reduce((sum, s) => {
         const str = s.indicators.find(i => i.number === '1.1');
-        return sum + (str ? (parseFloat(str.value) || 0) : 0);
+        return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
     { 
@@ -152,7 +152,7 @@ export default function OrganizationDetail() {
       compliance: orgSubmissions.find(s => s.month === 9)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 9).reduce((sum, s) => {
         const str = s.indicators.find(i => i.number === '1.1');
-        return sum + (str ? (parseFloat(str.value) || 0) : 0);
+        return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
     { 
@@ -161,7 +161,7 @@ export default function OrganizationDetail() {
       compliance: orgSubmissions.find(s => s.month === 10)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 10).reduce((sum, s) => {
         const str = s.indicators.find(i => i.number === '1.1');
-        return sum + (str ? (parseFloat(str.value) || 0) : 0);
+        return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
     { 
@@ -170,7 +170,7 @@ export default function OrganizationDetail() {
       compliance: orgSubmissions.find(s => s.month === 11)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 11).reduce((sum, s) => {
         const str = s.indicators.find(i => i.number === '1.1');
-        return sum + (str ? (parseFloat(str.value) || 0) : 0);
+        return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
     { 
@@ -179,7 +179,7 @@ export default function OrganizationDetail() {
       compliance: orgSubmissions.find(s => s.month === 12)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 12).reduce((sum, s) => {
         const str = s.indicators.find(i => i.number === '1.1');
-        return sum + (str ? (parseFloat(str.value) || 0) : 0);
+        return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
   ];
@@ -204,7 +204,7 @@ export default function OrganizationDetail() {
   // Compare with system average
   const systemAvgSTRs = Math.round(allSubmissions.reduce((sum, s) => {
     const str = s.indicators.find(i => i.number === '1.1');
-    return sum + (str ? (parseFloat(str.value) || 0) : 0);
+    return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
   }, 0) / organizations.length);
 
   const comparisonData = [

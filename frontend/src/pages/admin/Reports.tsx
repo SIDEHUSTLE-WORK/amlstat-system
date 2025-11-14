@@ -95,8 +95,8 @@ export default function Reports() {
       const strInd = sub.indicators.find(ind => ind.number === '1.1');
       const caseInd = sub.indicators.find(ind => ind.number === '6.1');
       
-      if (strInd) strs += parseFloat(strInd.value) || 0;
-      if (caseInd) cases += parseFloat(caseInd.value) || 0;
+      if (strInd) strs += parseFloat(String(strInd.value)) || 0;
+      if (caseInd) cases += parseFloat(String(caseInd.value)) || 0;
     });
 
     return {

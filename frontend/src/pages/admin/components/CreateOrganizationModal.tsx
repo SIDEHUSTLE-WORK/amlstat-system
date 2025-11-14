@@ -55,9 +55,15 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    const newOrg: Organization = {
+    const newOrg = {
       id: `org-${Date.now()}`,
-      ...formData,
+      code: formData.code,
+      name: formData.name,
+      type: formData.type as any,
+      email: formData.email,
+      phone: formData.phone,
+      contactPerson: formData.contactPerson,
+      isActive: formData.isActive,
       createdAt: new Date(),
       totalSubmissions: 0,
       completedSubmissions: 0,
@@ -65,7 +71,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
       overdueSubmissions: 0,
       complianceScore: 0,
       lastSubmissionDate: undefined
-    };
+    } as Organization;
 
     // TODO: Add to store
     console.log('Creating organization:', newOrg);
@@ -79,7 +85,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-fia-navy to-fia-teal p-6 text-white sticky top-0">
+        <div className="bg-gradient-to-r from-blue-900 to-teal-600 p-6 text-white sticky top-0 rounded-t-2xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
@@ -112,7 +118,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.code}
               onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
               placeholder="e.g., BOU, CMA, IRA"
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-fia-teal ${
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.code ? 'border-red-500' : 'border-gray-300'
               }`}
             />
@@ -130,7 +136,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Full organization name"
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-fia-teal ${
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.name ? 'border-red-500' : 'border-gray-300'
               }`}
             />
@@ -145,7 +151,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
             <select
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-fia-teal"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
             >
               <option value="regulator">Regulator</option>
               <option value="ministry">Ministry</option>
@@ -167,7 +173,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="statistics@organization.go.ug"
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-fia-teal ${
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.email ? 'border-red-500' : 'border-gray-300'
               }`}
             />
@@ -185,7 +191,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               placeholder="+256 414 XXX XXX"
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-fia-teal ${
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.phone ? 'border-red-500' : 'border-gray-300'
               }`}
             />
@@ -203,7 +209,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.contactPerson}
               onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
               placeholder="Name of primary contact"
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-fia-teal ${
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.contactPerson ? 'border-red-500' : 'border-gray-300'
               }`}
             />
@@ -217,7 +223,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               id="isActive"
               checked={formData.isActive}
               onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-              className="rounded text-fia-teal focus:ring-fia-teal"
+              className="rounded text-teal-600 focus:ring-teal-500"
             />
             <label htmlFor="isActive" className="text-sm font-medium text-gray-700">
               Set as Active (organization can immediately start submitting)
@@ -229,14 +235,14 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 bg-fia-navy text-white px-6 py-3 rounded-lg font-bold hover:bg-fia-navy-dark disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 bg-blue-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isSubmitting ? 'Creating...' : 'Create Organization'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50"
+              className="px-6 py-3 border-2 border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>

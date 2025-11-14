@@ -80,7 +80,7 @@ export const exportFinancialReport = (submissions: MonthlySubmission[]) => {
 
     monthSubs.forEach(sub => {
       sub.indicators.forEach(ind => {
-        const value = parseFloat(ind.value) || 0;
+        const value = parseFloat(String(ind.value)) || 0;
         if (ind.number === '1.1') strs += value;
         if (ind.number === '6.1') cases += value;
         if (ind.number === '6.4') assetsFrozen += value;

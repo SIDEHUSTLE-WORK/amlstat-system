@@ -24,15 +24,36 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
   });
 
   const [emailInput, setEmailInput] = useState('');
+  const [error, setError] = useState('');
+
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
   const addRecipient = () => {
-    if (emailInput && emailInput.includes('@')) {
-      setSchedule({
-        ...schedule,
-        recipients: [...schedule.recipients, emailInput]
-      });
-      setEmailInput('');
+    setError('');
+    
+    if (!emailInput.trim()) {
+      setError('Please enter an email address');
+      return;
     }
+
+    if (!validateEmail(emailInput)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    if (schedule.recipients.includes(emailInput.toLowerCase())) {
+      setError('This email is already added');
+      return;
+    }
+
+    setSchedule({
+      ...schedule,
+      recipients: [...schedule.recipients, emailInput.toLowerCase()]
+    });
+    setEmailInput('');
   };
 
   const removeRecipient = (email: string) => {
@@ -43,10 +64,13 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
   };
 
   const handleSubmit = () => {
+    setError('');
+    
     if (schedule.recipients.length === 0) {
-      alert('Please add at least one recipient');
+      setError('Please add at least one recipient');
       return;
     }
+    
     onSchedule(schedule);
     onClose();
   };
@@ -54,19 +78,31 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl">
-        <div className="bg-gradient-to-r from-fia-navy to-fia-teal p-6 text-white">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-900 to-teal-600 p-6 text-white rounded-t-2xl">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold">Schedule Report</h2>
-              <p className="text-white/80 capitalize">{reportType} Report</p>
+              <p className="text-white/80 capitalize mt-1">{reportType} Report</p>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg">
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              aria-label="Close"
+            >
               <X className="w-6 h-6" />
             </button>
           </div>
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
+
           {/* Frequency */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -75,12 +111,12 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
             </label>
             <select
               value={schedule.frequency}
-              onChange={(e) => setSchedule({ ...schedule, frequency: e.target.value as any })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-fia-teal"
+              onChange={(e) => setSchedule({ ...schedule, frequency: e.target.value as ReportSchedule['frequency'] })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             >
               <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly (Every Monday)</option>
+              <option value="monthly">Monthly (1st of each month)</option>
             </select>
           </div>
 
@@ -88,36 +124,36 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               <Clock className="w-4 h-4 inline mr-2" />
-              Time
+              Time (EAT - East Africa Time)
             </label>
             <input
               type="time"
               value={schedule.time}
               onChange={(e) => setSchedule({ ...schedule, time: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-fia-teal"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             />
           </div>
 
           {/* Format */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Format</label>
-            <div className="flex space-x-3">
-              {['csv', 'pdf', 'excel'].map(format => (
-                <label key={format} className="flex-1">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Export Format</label>
+            <div className="grid grid-cols-3 gap-3">
+              {(['csv', 'pdf', 'excel'] as const).map(format => (
+                <label key={format} className="cursor-pointer">
                   <input
                     type="radio"
                     name="format"
                     value={format}
                     checked={schedule.format === format}
-                    onChange={(e) => setSchedule({ ...schedule, format: e.target.value as any })}
+                    onChange={(e) => setSchedule({ ...schedule, format: e.target.value as ReportSchedule['format'] })}
                     className="sr-only"
                   />
-                  <div className={`p-3 border-2 rounded-lg text-center cursor-pointer transition-all ${
+                  <div className={`p-3 border-2 rounded-lg text-center transition-all ${
                     schedule.format === format
-                      ? 'border-fia-navy bg-fia-navy text-white'
-                      : 'border-gray-300 hover:border-fia-navy'
+                      ? 'border-blue-900 bg-blue-900 text-white shadow-md'
+                      : 'border-gray-300 hover:border-blue-900 hover:bg-gray-50'
                   }`}>
-                    <span className="font-semibold uppercase">{format}</span>
+                    <span className="font-semibold uppercase text-sm">{format}</span>
                   </div>
                 </label>
               ))}
@@ -128,54 +164,70 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               <Mail className="w-4 h-4 inline mr-2" />
-              Recipients
+              Email Recipients
             </label>
             
             <div className="flex space-x-2 mb-3">
               <input
                 type="email"
                 value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addRecipient()}
-                placeholder="Enter email address"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-fia-teal"
+                onChange={(e) => {
+                  setEmailInput(e.target.value);
+                  setError('');
+                }}
+                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addRecipient())}
+                placeholder="director@fia.go.ug"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               />
               <button
                 onClick={addRecipient}
-                className="px-6 py-2 bg-fia-navy text-white rounded-lg font-semibold hover:bg-fia-navy-dark"
+                className="px-6 py-2 bg-blue-900 text-white rounded-lg font-semibold hover:bg-blue-800 transition-colors"
               >
                 Add
               </button>
             </div>
 
-            {schedule.recipients.length > 0 && (
-              <div className="space-y-2">
+            {schedule.recipients.length > 0 ? (
+              <div className="space-y-2 max-h-40 overflow-y-auto">
                 {schedule.recipients.map(email => (
-                  <div key={email} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm font-medium">{email}</span>
+                  <div key={email} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <span className="text-sm font-medium text-gray-700">{email}</span>
                     <button
                       onClick={() => removeRecipient(email)}
-                      className="text-red-600 hover:text-red-800"
+                      className="text-red-600 hover:text-red-800 transition-colors"
+                      aria-label={`Remove ${email}`}
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-sm text-gray-500 italic">No recipients added yet</p>
             )}
           </div>
+
+          {/* Summary */}
+          {schedule.recipients.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                <strong>Summary:</strong> {reportType} report will be sent {schedule.frequency} at {schedule.time} EAT to {schedule.recipients.length} recipient{schedule.recipients.length > 1 ? 's' : ''} as {schedule.format.toUpperCase()}.
+              </p>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex space-x-3 pt-4">
             <button
               onClick={handleSubmit}
-              className="flex-1 bg-fia-navy text-white px-6 py-3 rounded-lg font-bold hover:bg-fia-navy-dark"
+              disabled={schedule.recipients.length === 0}
+              className="flex-1 bg-blue-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               Schedule Report
             </button>
             <button
               onClick={onClose}
-              className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50"
+              className="px-6 py-3 border-2 border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>

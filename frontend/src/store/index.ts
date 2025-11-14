@@ -636,7 +636,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().addNotification({
           title: 'Submission Approved',
           message: `Your submission for ${new Date(submission.year, submission.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} has been approved.`,
-          type: 'success'
+          type: 'success', userId: 'system'
         });
       }
       
@@ -666,7 +666,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().addNotification({
           title: 'Submission Rejected',
           message: `Your submission for ${new Date(submission.year, submission.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} has been rejected. Reason: ${reason}`,
-          type: 'error'
+          type: 'error', userId: 'system'
         });
       }
       

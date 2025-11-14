@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // src/components/chat/AudioRecorder.tsx
 import { useState, useRef, useEffect } from 'react';
 import { Mic, Square, Trash2, Send } from 'lucide-react';

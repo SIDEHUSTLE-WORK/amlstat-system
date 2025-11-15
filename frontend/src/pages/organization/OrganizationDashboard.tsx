@@ -1,3 +1,5 @@
+// frontend/src/pages/organization/OrganizationDashboard.tsx
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/common/DashboardLayout';
 import { 
@@ -18,75 +20,98 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 export default function OrganizationDashboard() {
   const navigate = useNavigate();
-  const { currentUser, getSubmissionsByOrg } = useAppStore();
+  const { 
+    currentUser, 
+    getSubmissionsByOrg,
+    fetchSubmissionsByOrg,
+    fetchDashboardStats,
+    isLoadingSubmissions,
+    dashboardStats
+  } = useAppStore();
+  
   const org = currentUser?.organization;
 
+  // 🔥 FETCH REAL DATA ON MOUNT
+  useEffect(() => {
+    if (org?.id) {
+      fetchSubmissionsByOrg(org.id);
+      fetchDashboardStats();
+    }
+  }, [org?.id, fetchSubmissionsByOrg, fetchDashboardStats]);
+
   if (!org) {
-    return <div>Loading...</div>;
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-fia-navy mb-4"></div>
+            <p className="text-gray-600 text-lg">Loading organization...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
   }
 
   // Get submissions for this organization
   const mySubmissions = getSubmissionsByOrg(org.id);
   
   // Calculate stats
-  const submittedCount = mySubmissions.filter(s => s.status === 'submitted' || s.status === 'approved').length;
-  const draftCount = mySubmissions.filter(s => s.status === 'draft').length;
-  const totalIndicatorsFilled = mySubmissions.reduce((sum, s) => sum + s.filledIndicators, 0);
-  const totalIndicatorsExpected = mySubmissions.reduce((sum, s) => sum + s.totalIndicators, 0);
-  const avgCompletionRate = totalIndicatorsExpected > 0 ? Math.round((totalIndicatorsFilled / totalIndicatorsExpected) * 100) : 0;
+  const submittedCount = mySubmissions.filter(s => 
+    s.status === 'SUBMITTED' || s.status === 'APPROVED' || s.status === 'UNDER_REVIEW'
+  ).length;
+  const draftCount = mySubmissions.filter(s => s.status === 'DRAFT').length;
+  const approvedCount = mySubmissions.filter(s => s.status === 'APPROVED').length;
+  
+  // Calculate total indicators
+  const totalIndicatorsFilled = mySubmissions.reduce((sum, s) => sum + (s.filledIndicators || 0), 0);
+  const totalIndicatorsExpected = mySubmissions.reduce((sum, s) => sum + (s.totalIndicators || 0), 0);
+  const avgCompletionRate = totalIndicatorsExpected > 0 
+    ? Math.round((totalIndicatorsFilled / totalIndicatorsExpected) * 100) 
+    : 0;
 
-  // Monthly submissions data (July - December 2024)
-  const monthlySubmissions = [
-    { month: 'Jul 2024', monthNum: 7, status: 'submitted', dueDate: '2024-08-05', submittedDate: '2024-08-03', indicators: 35, filled: 35 },
-    { month: 'Aug 2024', monthNum: 8, status: 'submitted', dueDate: '2024-09-05', submittedDate: '2024-09-02', indicators: 35, filled: 35 },
-    { month: 'Sep 2024', monthNum: 9, status: 'submitted', dueDate: '2024-10-05', submittedDate: '2024-10-04', indicators: 35, filled: 35 },
-    { month: 'Oct 2024', monthNum: 10, status: 'submitted', dueDate: '2024-11-05', submittedDate: '2024-11-03', indicators: 35, filled: 35 },
-    { month: 'Nov 2024', monthNum: 11, status: 'submitted', dueDate: '2024-12-05', submittedDate: '2024-12-04', indicators: 35, filled: 35 },
-    { month: 'Dec 2024', monthNum: 12, status: 'pending', dueDate: '2025-01-05', submittedDate: null, indicators: 35, filled: 0 },
-  ];
+  // Get current date info
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1; // 1-12
+  const currentYear = now.getFullYear();
 
-  // Check if December has been submitted
-  const decSubmission = mySubmissions.find(s => s.month === 12 && s.year === 2024);
-  if (decSubmission) {
-    monthlySubmissions[5] = {
-      ...monthlySubmissions[5],
-      status: 'submitted',
-      submittedDate: decSubmission.submittedAt?.toISOString() || new Date().toISOString(),
-      filled: decSubmission.filledIndicators,
-      indicators: decSubmission.totalIndicators,
+  // Check if current month has been submitted
+  const currentMonthSubmission = mySubmissions.find(
+    s => s.month === currentMonth && s.year === currentYear
+  );
+
+  // Monthly submissions data (last 6 months)
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const last6Months = Array.from({ length: 6 }, (_, i) => {
+    const date = new Date(currentYear, currentMonth - 6 + i, 1);
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    const submission = mySubmissions.find(s => s.month === month && s.year === year);
+    
+    return {
+      month: monthNames[date.getMonth()],
+      monthNum: month,
+      year: year,
+      compliance: submission ? submission.completionRate : 0,
+      rate: submission ? submission.completionRate : 0,
+      hasSubmission: !!submission,
+      status: submission?.status || 'PENDING'
     };
-  }
+  });
 
   // Performance trend
-  const performanceTrend = [
-    { month: 'Jul', compliance: 95 },
-    { month: 'Aug', compliance: 96 },
-    { month: 'Sep', compliance: 94 },
-    { month: 'Oct', compliance: 97 },
-    { month: 'Nov', compliance: 95 },
-    { month: 'Dec', compliance: decSubmission ? decSubmission.completionRate : 0 },
-  ];
-
-  // Completion rate over time
-  const completionData = [
-    { month: 'Jul', rate: 100 },
-    { month: 'Aug', rate: 100 },
-    { month: 'Sep', rate: 100 },
-    { month: 'Oct', rate: 100 },
-    { month: 'Nov', rate: 100 },
-    { month: 'Dec', rate: decSubmission ? decSubmission.completionRate : 0 },
-  ];
+  const performanceTrend = last6Months;
+  const completionData = last6Months;
 
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { class: string; icon: any; text: string }> = {
-      submitted: { class: 'badge-success', icon: CheckCircle, text: 'Submitted' },
-      approved: { class: 'badge-success', icon: CheckCircle, text: 'Approved' },
-      pending: { class: 'badge-warning', icon: Clock, text: 'Pending' },
-      draft: { class: 'badge-info', icon: FileText, text: 'Draft' },
-      rejected: { class: 'badge-danger', icon: AlertTriangle, text: 'Rejected' },
-      overdue: { class: 'badge-danger', icon: AlertTriangle, text: 'Overdue' },
+      SUBMITTED: { class: 'badge-info', icon: Clock, text: 'Submitted' },
+      APPROVED: { class: 'badge-success', icon: CheckCircle, text: 'Approved' },
+      PENDING: { class: 'badge-warning', icon: Clock, text: 'Pending' },
+      DRAFT: { class: 'badge-info', icon: FileText, text: 'Draft' },
+      REJECTED: { class: 'badge-danger', icon: AlertTriangle, text: 'Rejected' },
+      UNDER_REVIEW: { class: 'badge-info', icon: Clock, text: 'Under Review' },
     };
-    const badge = badges[status] || badges.pending;
+    const badge = badges[status] || badges.PENDING;
     const Icon = badge.icon;
     return (
       <span className={`badge ${badge.class} flex items-center space-x-1`}>
@@ -96,7 +121,19 @@ export default function OrganizationDashboard() {
     );
   };
 
-  const currentMonth = monthlySubmissions[5]; // December 2024
+  // 🔥 LOADING STATE
+  if (isLoadingSubmissions) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-fia-navy mb-4"></div>
+            <p className="text-gray-600 text-lg">Loading your submissions...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -134,13 +171,13 @@ export default function OrganizationDashboard() {
             </div>
             <div>
               <p className="text-fia-gold text-sm font-semibold mb-1">Type</p>
-              <p className="text-2xl font-bold capitalize">{org.type.replace('_', ' ')}</p>
+              <p className="text-2xl font-bold capitalize">{org.type?.replace('_', ' ')}</p>
             </div>
             <div>
               <p className="text-fia-gold text-sm font-semibold mb-1">Compliance Score</p>
               <div className="flex items-center space-x-2">
-                <p className="text-2xl font-bold">{org.complianceScore}%</p>
-                {org.complianceScore >= 90 ? (
+                <p className="text-2xl font-bold">{org.complianceScore || 0}%</p>
+                {(org.complianceScore || 0) >= 90 ? (
                   <CheckCircle className="w-6 h-6 text-green-400" />
                 ) : (
                   <AlertTriangle className="w-6 h-6 text-yellow-400" />
@@ -149,7 +186,7 @@ export default function OrganizationDashboard() {
             </div>
             <div>
               <p className="text-fia-gold text-sm font-semibold mb-1">Your Submissions</p>
-              <p className="text-2xl font-bold">{submittedCount}/{6}</p>
+              <p className="text-2xl font-bold">{approvedCount}/{mySubmissions.length}</p>
             </div>
             <div>
               <p className="text-fia-gold text-sm font-semibold mb-1">Status</p>
@@ -162,7 +199,7 @@ export default function OrganizationDashboard() {
         </div>
 
         {/* Current Month Alert */}
-        {currentMonth.status === 'pending' && !decSubmission && (
+        {!currentMonthSubmission && dashboardStats && (
           <div className="bg-yellow-50 border-l-4 border-yellow-500 rounded-xl p-6 shadow-lg">
             <div className="flex items-start space-x-4">
               <div className="p-3 bg-yellow-100 rounded-lg">
@@ -170,10 +207,10 @@ export default function OrganizationDashboard() {
               </div>
               <div className="flex-1">
                 <h3 className="text-xl font-bold text-yellow-900 mb-2">
-                  December 2024 Statistics Due!
+                  {dashboardStats.currentMonth} Statistics Due!
                 </h3>
                 <p className="text-yellow-800 mb-4">
-                  Your monthly statistics for December 2024 are due by <strong>January 5, 2025</strong>. 
+                  Your monthly statistics for {dashboardStats.currentMonth} are due soon. 
                   Please submit your indicators before the deadline.
                 </p>
                 <div className="flex space-x-3">
@@ -195,8 +232,8 @@ export default function OrganizationDashboard() {
           </div>
         )}
 
-        {/* Success message if December submitted */}
-        {decSubmission && (
+        {/* Success message if current month submitted */}
+        {currentMonthSubmission && (
           <div className="bg-green-50 border-l-4 border-green-500 rounded-xl p-6 shadow-lg">
             <div className="flex items-start space-x-4">
               <div className="p-3 bg-green-100 rounded-lg">
@@ -204,14 +241,16 @@ export default function OrganizationDashboard() {
               </div>
               <div className="flex-1">
                 <h3 className="text-xl font-bold text-green-900 mb-2">
-                  December 2024 Statistics Submitted! ✅
+                  {monthNames[currentMonth - 1]} {currentYear} Statistics Submitted! ✅
                 </h3>
                 <p className="text-green-800 mb-2">
-                  Your statistics were successfully submitted on {decSubmission.submittedAt?.toLocaleDateString()}.
+                  Your statistics were successfully submitted
+                  {currentMonthSubmission.submittedAt && ` on ${new Date(currentMonthSubmission.submittedAt).toLocaleDateString()}`}.
                 </p>
                 <p className="text-green-700 text-sm">
-                  <strong>Completion Rate:</strong> {decSubmission.completionRate}% 
-                  ({decSubmission.filledIndicators}/{decSubmission.totalIndicators} indicators filled)
+                  <strong>Status:</strong> {currentMonthSubmission.status} | 
+                  <strong> Completion Rate:</strong> {currentMonthSubmission.completionRate}% 
+                  ({currentMonthSubmission.filledIndicators}/{currentMonthSubmission.totalIndicators} indicators filled)
                 </p>
               </div>
             </div>
@@ -225,32 +264,32 @@ export default function OrganizationDashboard() {
               <div className="p-3 bg-green-50 rounded-lg">
                 <CheckCircle className="w-6 h-6 text-green-500" />
               </div>
-              <span className="text-3xl font-bold text-green-500">{submittedCount}</span>
+              <span className="text-3xl font-bold text-green-500">{approvedCount}</span>
             </div>
-            <h3 className="text-gray-600 font-medium">Submitted</h3>
-            <p className="text-sm text-gray-500 mt-1">Months completed</p>
+            <h3 className="text-gray-600 font-medium">Approved</h3>
+            <p className="text-sm text-gray-500 mt-1">Months approved</p>
           </div>
 
           <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-blue-500 card-hover">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-blue-50 rounded-lg">
-                <FileText className="w-6 h-6 text-blue-500" />
+                <Clock className="w-6 h-6 text-blue-500" />
               </div>
-              <span className="text-3xl font-bold text-blue-500">{draftCount}</span>
+              <span className="text-3xl font-bold text-blue-500">{submittedCount}</span>
+            </div>
+            <h3 className="text-gray-600 font-medium">Submitted</h3>
+            <p className="text-sm text-gray-500 mt-1">Awaiting review</p>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-yellow-500 card-hover">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-3 bg-yellow-50 rounded-lg">
+                <FileText className="w-6 h-6 text-yellow-500" />
+              </div>
+              <span className="text-3xl font-bold text-yellow-500">{draftCount}</span>
             </div>
             <h3 className="text-gray-600 font-medium">Drafts</h3>
             <p className="text-sm text-gray-500 mt-1">In progress</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-fia-teal card-hover">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-fia-teal/10 rounded-lg">
-                <BarChart3 className="w-6 h-6 text-fia-teal" />
-              </div>
-              <span className="text-3xl font-bold text-fia-teal">{totalIndicatorsFilled}</span>
-            </div>
-            <h3 className="text-gray-600 font-medium">Indicators Filled</h3>
-            <p className="text-sm text-gray-500 mt-1">Total data points</p>
           </div>
 
           <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-fia-navy card-hover">
@@ -266,41 +305,63 @@ export default function OrganizationDashboard() {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Performance Trend */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Your Compliance Trend (6 Months)</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={performanceTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis domain={[0, 100]} />
-                <Tooltip />
-                <Line type="monotone" dataKey="compliance" stroke="#1C3D5A" strokeWidth={3} dot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+        {mySubmissions.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Performance Trend */}
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Your Compliance Trend (Last 6 Months)</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={performanceTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip />
+                  <Line 
+                    type="monotone" 
+                    dataKey="compliance" 
+                    stroke="#1C3D5A" 
+                    strokeWidth={3} 
+                    dot={{ r: 5 }} 
+                    name="Completion Rate"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
 
-          {/* Completion Rate */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Monthly Completion Rate</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={completionData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis domain={[0, 100]} />
-                <Tooltip />
-                <Bar dataKey="rate" fill="#2C7A7B" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {/* Completion Rate */}
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Monthly Completion Rate</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={completionData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip />
+                  <Bar dataKey="rate" fill="#2C7A7B" radius={[8, 8, 0, 0]} name="Completion %" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-xl p-12 shadow-lg text-center">
+            <BarChart3 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-gray-900 mb-2">No Submissions Yet</h3>
+            <p className="text-gray-600 mb-6">Your charts will appear here once you start submitting statistics.</p>
+            <button 
+              onClick={() => navigate('/organization/submit')}
+              className="btn-primary inline-flex items-center space-x-2"
+            >
+              <FileText className="w-5 h-5" />
+              <span>Submit Your First Statistics</span>
+            </button>
+          </div>
+        )}
 
-        {/* Monthly Submissions Timeline */}
+        {/* 🔥 SUBMISSIONS HISTORY - COMPLETE WITH REVIEW NOTES */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           <div className="p-6 border-b border-gray-200 bg-gray-50">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Monthly Submissions (Jul - Dec 2024)</h2>
+              <h2 className="text-xl font-bold text-gray-900">Your Submissions History</h2>
               <button className="btn-outline text-sm flex items-center space-x-2">
                 <Download className="w-4 h-4" />
                 <span>Export History</span>
@@ -309,88 +370,97 @@ export default function OrganizationDashboard() {
           </div>
 
           <div className="p-6">
-            <div className="space-y-4">
-              {monthlySubmissions.map((submission, index) => {
-                // Find actual submission
-                const actualSubmission = mySubmissions.find(s => s.month === submission.monthNum && s.year === 2024);
-                
-                return (
-                  <div
-                    key={index}
-                    className={`border-2 rounded-xl p-6 transition-all ${
-                      submission.status === 'submitted' || actualSubmission
-                        ? 'border-green-200 bg-green-50'
-                        : submission.status === 'overdue'
-                        ? 'border-red-200 bg-red-50'
-                        : 'border-yellow-200 bg-yellow-50'
-                    }`}
+            {mySubmissions.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-gray-900 mb-2">No Submissions Yet</h3>
+                <p className="text-gray-600 mb-6">Start by submitting your monthly statistics.</p>
+                <div className="flex justify-center space-x-3">
+                  <button 
+                    onClick={() => navigate('/organization/submit')}
+                    className="btn-primary"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-4 mb-3">
-                          <h3 className="text-xl font-bold text-gray-900">{submission.month}</h3>
-                          {getStatusBadge(actualSubmission ? actualSubmission.status : submission.status)}
-                          <span className="text-sm text-gray-600">
-                            <Calendar className="w-4 h-4 inline mr-1" />
-                            Due: {new Date(submission.dueDate).toLocaleDateString()}
-                          </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-600">Indicators:</span>
-                            <p className="font-semibold text-gray-900">
-                              {actualSubmission ? actualSubmission.totalIndicators : submission.indicators} total
-                            </p>
+                    Submit Statistics
+                  </button>
+                  <button 
+                    onClick={() => navigate('/organization/upload')}
+                    className="btn-secondary"
+                  >
+                    Upload Excel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {mySubmissions
+                  .sort((a, b) => b.year - a.year || b.month - a.month)
+                  .map((submission) => (
+                    <div
+                      key={submission.id}
+                      className={`border-2 rounded-xl p-6 transition-all ${
+                        submission.status === 'APPROVED'
+                          ? 'border-green-200 bg-green-50'
+                          : submission.status === 'REJECTED'
+                          ? 'border-red-200 bg-red-50'
+                          : submission.status === 'SUBMITTED' || submission.status === 'UNDER_REVIEW'
+                          ? 'border-blue-200 bg-blue-50'
+                          : 'border-yellow-200 bg-yellow-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-4 mb-3">
+                            <h3 className="text-xl font-bold text-gray-900">
+                              {monthNames[submission.month - 1]} {submission.year}
+                            </h3>
+                            {getStatusBadge(submission.status)}
+                            {submission.submittedAt && (
+                              <span className="text-sm text-gray-600">
+                                <Calendar className="w-4 h-4 inline mr-1" />
+                                Submitted: {new Date(submission.submittedAt).toLocaleDateString()}
+                              </span>
+                            )}
                           </div>
-                          <div>
-                            <span className="text-gray-600">Filled:</span>
-                            <p className="font-semibold text-gray-900">
-                              {actualSubmission ? actualSubmission.filledIndicators : submission.filled}/
-                              {actualSubmission ? actualSubmission.totalIndicators : submission.indicators}
-                            </p>
+                          
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-600">Indicators:</span>
+                              <p className="font-semibold text-gray-900">{submission.totalIndicators} total</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-600">Filled:</span>
+                              <p className="font-semibold text-gray-900">
+                                {submission.filledIndicators}/{submission.totalIndicators}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-gray-600">Completion:</span>
+                              <p className="font-semibold text-gray-900">{submission.completionRate}%</p>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-gray-600">Completion:</span>
-                            <p className="font-semibold text-gray-900">
-                              {actualSubmission ? actualSubmission.completionRate : 
-                                ((submission.filled / submission.indicators) * 100).toFixed(0)}%
-                            </p>
-                          </div>
+
+                          {/* 🔥 REVIEW NOTES DISPLAY */}
+                          {submission.reviewNotes && (
+                            <div className="mt-3 p-3 bg-white/50 rounded-lg">
+                              <p className="text-sm font-semibold text-gray-700">Review Notes:</p>
+                              <p className="text-sm text-gray-600 mt-1">{submission.reviewNotes}</p>
+                            </div>
+                          )}
                         </div>
 
-                        {(submission.submittedDate || actualSubmission) && (
-                          <p className="text-sm text-gray-600 mt-2">
-                            ✅ Submitted on {actualSubmission 
-                              ? actualSubmission.submittedAt?.toLocaleDateString() 
-                              : new Date(submission.submittedDate!).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="ml-6">
-                        {(submission.status === 'submitted' || actualSubmission) ? (
+                        <div className="ml-6">
                           <button 
                             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center space-x-2"
                           >
                             <Eye className="w-5 h-5" />
                             <span>View Details</span>
                           </button>
-                        ) : (
-                          <button 
-                            onClick={() => navigate('/organization/submit')}
-                            className="bg-fia-navy hover:bg-fia-navy-light text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center space-x-2"
-                          >
-                            <FileText className="w-5 h-5" />
-                            <span>Submit Now</span>
-                          </button>
-                        )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
 

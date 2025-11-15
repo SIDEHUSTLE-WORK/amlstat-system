@@ -1,15 +1,18 @@
-// src/pages/admin/components/EditOrganizationModal.tsx
+// frontend/src/pages/admin/components/EditOrganizationModal.tsx
 import { useState } from 'react';
 import { X, Building2, Mail, Phone, User, Tag, Save, Trash2, Power } from 'lucide-react';
 import { useAppStore } from '../../../store';
 import { Organization } from '../../../types';
+import { organizationsAPI } from '../../../services/api';
+import toast from 'react-hot-toast';
 
 interface EditOrganizationModalProps {
   organization: Organization;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export default function EditOrganizationModal({ organization, onClose }: EditOrganizationModalProps) {
+export default function EditOrganizationModal({ organization, onClose, onSuccess }: EditOrganizationModalProps) {
   const { organizations } = useAppStore();
   
   const [formData, setFormData] = useState({
@@ -25,66 +28,126 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    } else if (formData.name.length < 3) {
+      newErrors.name = 'Name must be at least 3 characters';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Invalid email format';
     }
 
-    if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
-    if (!formData.contactPerson.trim()) newErrors.contactPerson = 'Contact person is required';
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone is required';
+    }
+
+    if (!formData.contactPerson.trim()) {
+      newErrors.contactPerson = 'Contact person is required';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // 🔥 REAL API UPDATE
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validate()) return;
+    if (!validate()) {
+      toast.error('Please fix the errors in the form');
+      return;
+    }
 
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await organizationsAPI.update(organization.id, {
+        name: formData.name.trim(),
+        type: formData.type as any,
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
+        contactPerson: formData.contactPerson.trim(),
+        isActive: formData.isActive
+      });
 
-    console.log('Updating organization:', { ...organization, ...formData });
-
-    setIsSubmitting(false);
-    alert('Organization updated successfully!');
-    onClose();
+      if (response.data.success) {
+        toast.success('Organization updated successfully!');
+        onSuccess?.();
+        onClose();
+      }
+    } catch (error: any) {
+      console.error('Update organization error:', error);
+      
+      if (error.response?.data?.message) {
+        toast.error(error.response.data.message);
+        
+        if (error.response.data.errors) {
+          setErrors(error.response.data.errors);
+        }
+      } else {
+        toast.error('Failed to update organization');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  // 🔥 REAL API TOGGLE STATUS
   const handleToggleStatus = async () => {
     const newStatus = !formData.isActive;
     const action = newStatus ? 'activate' : 'deactivate';
     
-    if (window.confirm(`Are you sure you want to ${action} ${organization.name}?`)) {
-      setFormData({ ...formData, isActive: newStatus });
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      alert(`Organization ${action}d successfully!`);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (organization.totalSubmissions > 0) {
-      alert('Cannot delete organization with existing submissions. Archive it instead.');
+    if (!window.confirm(`Are you sure you want to ${action} ${organization.name}?`)) {
       return;
     }
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await organizationsAPI.update(organization.id, {
+        isActive: newStatus
+      });
 
-    console.log('Deleting organization:', organization.id);
-    alert('Organization deleted successfully!');
-    onClose();
+      if (response.data.success) {
+        setFormData({ ...formData, isActive: newStatus });
+        toast.success(`Organization ${action}d successfully!`);
+        onSuccess?.();
+      }
+    } catch (error: any) {
+      console.error('Toggle status error:', error);
+      toast.error(error.response?.data?.message || `Failed to ${action} organization`);
+    }
+  };
+
+  // 🔥 REAL API DELETE
+  const handleDelete = async () => {
+    if (organization.totalSubmissions > 0) {
+      toast.error('Cannot delete organization with existing submissions. Deactivate it instead.');
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      const response = await organizationsAPI.delete(organization.id);
+
+      if (response.data.success) {
+        toast.success('Organization deleted successfully!');
+        onSuccess?.();
+        onClose();
+      }
+    } catch (error: any) {
+      console.error('Delete organization error:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete organization');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -104,7 +167,8 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              disabled={isSubmitting || isDeleting}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50"
             >
               <X className="w-6 h-6" />
             </button>
@@ -139,6 +203,7 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Full organization name"
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 ${
                 errors.name ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -154,14 +219,16 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
             <select
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+              disabled={isSubmitting}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
             >
-              <option value="regulator">Regulator</option>
-              <option value="ministry">Ministry</option>
-              <option value="professional">Professional Body</option>
-              <option value="law_enforcement">Law Enforcement</option>
-              <option value="prosecution">Prosecution</option>
-              <option value="international">International</option>
+              <option value="REGULATOR">Regulator</option>
+              <option value="MINISTRY">Ministry</option>
+              <option value="PROFESSIONAL">Professional Body</option>
+              <option value="LAW_ENFORCEMENT">Law Enforcement</option>
+              <option value="PROSECUTION">Prosecution</option>
+              <option value="INTERNATIONAL">International</option>
+              <option value="FIA">FIA</option>
             </select>
           </div>
 
@@ -176,6 +243,7 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="statistics@organization.go.ug"
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 ${
                 errors.email ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -194,6 +262,7 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               placeholder="+256 414 XXX XXX"
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 ${
                 errors.phone ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -212,6 +281,7 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
               value={formData.contactPerson}
               onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
               placeholder="Name of primary contact"
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 ${
                 errors.contactPerson ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -231,7 +301,8 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
               <button
                 type="button"
                 onClick={handleToggleStatus}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-semibold transition-colors ${
+                disabled={isSubmitting}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 ${
                   formData.isActive
                     ? 'bg-green-100 text-green-700 hover:bg-green-200'
                     : 'bg-red-100 text-red-700 hover:bg-red-200'
@@ -267,7 +338,8 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center space-x-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-semibold transition-colors"
+              disabled={isSubmitting || isDeleting}
+              className="flex items-center space-x-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-semibold transition-colors disabled:opacity-50"
             >
               <Trash2 className="w-4 h-4" />
               <span>Delete Organization</span>
@@ -277,17 +349,27 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
               <button
                 type="button"
                 onClick={onClose}
-                className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50"
+                disabled={isSubmitting || isDeleting}
+                className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="flex items-center space-x-2 bg-green-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-700 disabled:opacity-50"
+                disabled={isSubmitting || isDeleting}
+                className="flex items-center space-x-2 bg-green-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
-                <Save className="w-4 h-4" />
-                <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
+                {isSubmitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Save Changes</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -319,16 +401,24 @@ export default function EditOrganizationModal({ organization, onClose }: EditOrg
               <div className="flex space-x-3">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50"
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleDelete}
-                  disabled={organization.totalSubmissions > 0}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={organization.totalSubmissions > 0 || isDeleting}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
-                  Delete
+                  {isDeleting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <span>Delete</span>
+                  )}
                 </button>
               </div>
             </div>

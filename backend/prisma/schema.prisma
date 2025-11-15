@@ -173,15 +173,13 @@ enum UserRole {
 }
 
 enum OrgType {
-  BANK
-  MOBILE_MONEY
-  MICROFINANCE
-  FOREX_BUREAU
-  INSURANCE
-  SACCO
-  SECURITIES
-  DNFBP
-  OTHER
+  REGULATOR           // BOU, CMA, IRA, UMRA, URSB, NLGRB, NGO_BUREAU
+  MINISTRY            // MEMD
+  PROFESSIONAL        // ICPAU, ULC
+  FIA                 // FIA itself
+  LAW_ENFORCEMENT     // CID, IG, UWA, URA
+  PROSECUTION         // ODPP
+  INTERNATIONAL       // INTERPOL
 }
 
 enum SubmissionStatus {

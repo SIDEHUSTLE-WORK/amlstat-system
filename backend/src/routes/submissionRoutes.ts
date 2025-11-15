@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 import {
+  getDashboardStats, // 🔥 NEW
   getAllSubmissions,
   getSubmissionsByOrg,
   getSubmissionById,
@@ -18,6 +19,9 @@ const router = Router();
 
 // Apply auth middleware to all routes
 router.use(authMiddleware);
+
+// 🔥 GET DASHBOARD STATS (NEW - Must be before other routes)
+router.get('/dashboard-stats', getDashboardStats);
 
 // 📊 GET SUBMISSION STATISTICS (Must be before /:id route)
 router.get('/statistics', getSubmissionStatistics);

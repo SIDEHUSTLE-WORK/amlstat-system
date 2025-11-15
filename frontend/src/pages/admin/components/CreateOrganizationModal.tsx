@@ -1,20 +1,22 @@
-// src/pages/admin/components/CreateOrganizationModal.tsx
+// frontend/src/pages/admin/components/CreateOrganizationModal.tsx
 import { useState } from 'react';
 import { X, Building2, Mail, Phone, User, Tag } from 'lucide-react';
 import { useAppStore } from '../../../store';
-import { Organization } from '../../../types';
+import { organizationsAPI } from '../../../services/api';
+import toast from 'react-hot-toast';
 
 interface CreateOrganizationModalProps {
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export default function CreateOrganizationModal({ onClose }: CreateOrganizationModalProps) {
+export default function CreateOrganizationModal({ onClose, onSuccess }: CreateOrganizationModalProps) {
   const { organizations } = useAppStore();
   
   const [formData, setFormData] = useState({
     code: '',
     name: '',
-    type: 'regulator',
+    type: 'REGULATOR',
     email: '',
     phone: '',
     contactPerson: '',
@@ -27,58 +29,80 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
   const validate = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.code.trim()) newErrors.code = 'Code is required';
-    else if (organizations.some(org => org.code === formData.code)) {
+    if (!formData.code.trim()) {
+      newErrors.code = 'Code is required';
+    } else if (formData.code.length < 2 || formData.code.length > 10) {
+      newErrors.code = 'Code must be between 2 and 10 characters';
+    } else if (organizations.some(org => org.code === formData.code.toUpperCase())) {
       newErrors.code = 'This code is already in use';
     }
 
-    if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    } else if (formData.name.length < 3) {
+      newErrors.name = 'Name must be at least 3 characters';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Invalid email format';
     }
 
-    if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
-    if (!formData.contactPerson.trim()) newErrors.contactPerson = 'Contact person is required';
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone is required';
+    }
+
+    if (!formData.contactPerson.trim()) {
+      newErrors.contactPerson = 'Contact person is required';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // 🔥 REAL API INTEGRATION
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validate()) return;
+    if (!validate()) {
+      toast.error('Please fix the errors in the form');
+      return;
+    }
 
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await organizationsAPI.create({
+        code: formData.code.trim().toUpperCase(),
+        name: formData.name.trim(),
+        type: formData.type as any,
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
+        contactPerson: formData.contactPerson.trim(),
+        isActive: formData.isActive
+      });
 
-    const newOrg = {
-      id: `org-${Date.now()}`,
-      code: formData.code,
-      name: formData.name,
-      type: formData.type as any,
-      email: formData.email,
-      phone: formData.phone,
-      contactPerson: formData.contactPerson,
-      isActive: formData.isActive,
-      createdAt: new Date(),
-      totalSubmissions: 0,
-      completedSubmissions: 0,
-      pendingSubmissions: 0,
-      overdueSubmissions: 0,
-      complianceScore: 0,
-      lastSubmissionDate: undefined
-    } as Organization;
-
-    // TODO: Add to store
-    console.log('Creating organization:', newOrg);
-
-    setIsSubmitting(false);
-    alert('Organization created successfully!');
-    onClose();
+      if (response.data.success) {
+        toast.success('Organization created successfully!');
+        onSuccess?.();
+        onClose();
+      }
+    } catch (error: any) {
+      console.error('Create organization error:', error);
+      
+      if (error.response?.data?.message) {
+        toast.error(error.response.data.message);
+        
+        if (error.response.data.errors) {
+          setErrors(error.response.data.errors);
+        }
+      } else {
+        toast.error('Failed to create organization');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -98,7 +122,8 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              disabled={isSubmitting}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50"
             >
               <X className="w-6 h-6" />
             </button>
@@ -118,6 +143,8 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.code}
               onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
               placeholder="e.g., BOU, CMA, IRA"
+              maxLength={10}
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.code ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -136,6 +163,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Full organization name"
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.name ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -151,14 +179,16 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
             <select
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              disabled={isSubmitting}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
             >
-              <option value="regulator">Regulator</option>
-              <option value="ministry">Ministry</option>
-              <option value="professional">Professional Body</option>
-              <option value="law_enforcement">Law Enforcement</option>
-              <option value="prosecution">Prosecution</option>
-              <option value="international">International</option>
+              <option value="REGULATOR">Regulator</option>
+              <option value="MINISTRY">Ministry</option>
+              <option value="PROFESSIONAL">Professional Body</option>
+              <option value="LAW_ENFORCEMENT">Law Enforcement</option>
+              <option value="PROSECUTION">Prosecution</option>
+              <option value="INTERNATIONAL">International</option>
+              <option value="FIA">FIA</option>
             </select>
           </div>
 
@@ -173,6 +203,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="statistics@organization.go.ug"
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.email ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -191,6 +222,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               placeholder="+256 414 XXX XXX"
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.phone ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -209,6 +241,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               value={formData.contactPerson}
               onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
               placeholder="Name of primary contact"
+              disabled={isSubmitting}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
                 errors.contactPerson ? 'border-red-500' : 'border-gray-300'
               }`}
@@ -223,6 +256,7 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
               id="isActive"
               checked={formData.isActive}
               onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+              disabled={isSubmitting}
               className="rounded text-teal-600 focus:ring-teal-500"
             />
             <label htmlFor="isActive" className="text-sm font-medium text-gray-700">
@@ -235,14 +269,22 @@ export default function CreateOrganizationModal({ onClose }: CreateOrganizationM
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 bg-blue-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 bg-blue-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
             >
-              {isSubmitting ? 'Creating...' : 'Create Organization'}
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <span>Create Organization</span>
+              )}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-3 border-2 border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+              disabled={isSubmitting}
+              className="px-6 py-3 border-2 border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>

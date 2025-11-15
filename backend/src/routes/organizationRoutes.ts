@@ -1,32 +1,40 @@
 // backend/src/routes/organizationRoutes.ts
 import { Router } from 'express';
-import { authMiddleware, adminMiddleware } from '../middleware/auth'; // ✅ Changed from authenticate, authorize
+import { authMiddleware, adminMiddleware } from '../middleware/auth';
 import {
   getAllOrganizations,
   getOrganizationById,
   createOrganization,
   updateOrganization,
-  deleteOrganization
+  deleteOrganization,
+  toggleOrganizationStatus,
+  getOrganizationStatistics
 } from '../controllers/organizationController';
 
 const router = Router();
 
 // Apply auth middleware to all routes
-router.use(authMiddleware); // ✅ Changed from authenticate
+router.use(authMiddleware);
 
-// Get all organizations
+// 🏢 GET ALL ORGANIZATIONS
 router.get('/', getAllOrganizations);
 
-// Get single organization
+// 🏢 CREATE ORGANIZATION (Admin only)
+router.post('/', adminMiddleware, createOrganization);
+
+// 🏢 GET ORGANIZATION STATISTICS (Must be before /:id)
+router.get('/:id/statistics', getOrganizationStatistics);
+
+// 🏢 TOGGLE ORGANIZATION STATUS (Admin only)
+router.patch('/:id/toggle-status', adminMiddleware, toggleOrganizationStatus);
+
+// 🏢 GET ORGANIZATION BY ID
 router.get('/:id', getOrganizationById);
 
-// Create organization (Admin only)
-router.post('/', adminMiddleware, createOrganization); // ✅ Changed from authorize
+// 🏢 UPDATE ORGANIZATION (Admin only)
+router.put('/:id', adminMiddleware, updateOrganization);
 
-// Update organization (Admin only)
-router.put('/:id', adminMiddleware, updateOrganization); // ✅ Changed from authorize
-
-// Delete organization (Admin only)
-router.delete('/:id', adminMiddleware, deleteOrganization); // ✅ Changed from authorize
+// 🏢 DELETE ORGANIZATION (Admin only)
+router.delete('/:id', adminMiddleware, deleteOrganization);
 
 export default router;

@@ -1,4 +1,4 @@
-// src/pages/organization/Messages.tsx
+// frontend/src/pages/organization/Messages.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/common/DashboardLayout';
@@ -8,7 +8,7 @@ import { useChatStore } from '../../store/chatStore';
 import { useAppStore } from '../../store';
 import { Plus, X, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { Conversation } from '../../types/chat';
+import type { Conversation, ChatMessage } from '../../types/chat';
 import {
   sendMessage,
   sendMessageWithFiles,
@@ -76,11 +76,11 @@ export default function OrganizationMessages() {
     if (!activeConversationId || !currentUser) return;
 
     try {
-      let newMessage;
+      let response;
 
       if (audioBlob) {
         // Send audio message
-        newMessage = await sendMessageWithAudio(
+        response = await sendMessageWithAudio(
           activeConversationId,
           {
             senderId: currentUser.id,
@@ -93,7 +93,7 @@ export default function OrganizationMessages() {
         );
       } else if (files && files.length > 0) {
         // Send message with files
-        newMessage = await sendMessageWithFiles(
+        response = await sendMessageWithFiles(
           activeConversationId,
           {
             senderId: currentUser.id,
@@ -107,7 +107,7 @@ export default function OrganizationMessages() {
         );
       } else {
         // Send text message
-        newMessage = await sendMessage(activeConversationId, {
+        response = await sendMessage(activeConversationId, {
           senderId: currentUser.id,
           senderName: currentUser.name,
           senderType: 'organization',
@@ -117,9 +117,28 @@ export default function OrganizationMessages() {
         });
       }
 
-      // @ts-ignore - TypeScript type inference issue, object structure is correct
-      addMessage(activeConversationId, newMessage);
-      toast.success('Message sent!');
+      // 🔥 FIXED: Properly handle the API response
+      if (response.data && response.data.success && response.data.data) {
+        const newMessage: ChatMessage = {
+          id: response.data.data.id || `msg-${Date.now()}`,
+          conversationId: activeConversationId,
+          senderId: currentUser.id,
+          senderName: currentUser.name,
+          senderType: 'organization',
+          senderOrgCode: currentUser.organizationCode,
+          content: response.data.data.content || content,
+          messageType: response.data.data.messageType || 'text',
+          attachments: response.data.data.attachments,
+          audioUrl: response.data.data.audioUrl,
+          readBy: [currentUser.id],
+          createdAt: new Date(response.data.data.createdAt || Date.now()),
+        };
+
+        addMessage(activeConversationId, newMessage);
+        toast.success('Message sent!');
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Failed to send message');

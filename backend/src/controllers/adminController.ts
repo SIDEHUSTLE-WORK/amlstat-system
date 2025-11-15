@@ -1,8 +1,15 @@
-// src/controllers/adminController.ts
+// backend/src/controllers/adminController.ts
 import { Request, Response, NextFunction } from 'express';
-import prisma from '../config/prisma'; // 🔥 PRISMA IMPORT
+import prisma from '../config/prisma';
 
-// 📊 GET DASHBOARD STATS
+// Helper function
+function getMonthName(month: number): string {
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                  'July', 'August', 'September', 'October', 'November', 'December'];
+  return months[month - 1];
+}
+
+// 📊 GET DASHBOARD STATS (For Admin Dashboard)
 export const getDashboardStats = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const currentYear = new Date().getFullYear();
@@ -22,10 +29,20 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
     const pendingSubmissions = await prisma.submission.count({ 
       where: { status: 'SUBMITTED' } 
     });
-    const overdueSubmissions = 0; // TODO: Calculate based on deadlines
+    
+    // Calculate overdue - orgs that haven't submitted for current month
+    const orgsWithCurrentMonthSubmission = await prisma.submission.count({
+      where: {
+        year: currentYear,
+        month: currentMonth,
+        status: { in: ['SUBMITTED', 'APPROVED', 'UNDER_REVIEW'] }
+      }
+    });
+    const overdueSubmissions = activeOrganizations - orgsWithCurrentMonthSubmission;
 
     // Calculate average compliance rate
     const organizations = await prisma.organization.findMany({
+      where: { isActive: true },
       include: {
         submissions: true
       }
@@ -67,7 +84,7 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       data: { stats }
     });
 
-    console.log('✅ Retrieved dashboard stats');
+    console.log('✅ Retrieved admin dashboard stats');
   } catch (error) {
     console.error('❌ Get dashboard stats error:', error);
     next(error);
@@ -100,7 +117,7 @@ export const getSystemOverview = async (req: Request, res: Response, next: NextF
         type: org.type,
         totalSubmissions: submissions.length,
         completedSubmissions: submissions.filter(s => s.status === 'APPROVED').length,
-        pendingSubmissions: submissions.filter(s => s.status === 'SUBMITTED').length,
+        pendingSubmissions: submissions.filter(s => s.status === 'SUBMITTED' || s.status === 'UNDER_REVIEW').length,
         rejectedSubmissions: submissions.filter(s => s.status === 'REJECTED').length,
         complianceScore: submissions.length > 0
           ? Math.round((submissions.filter(s => s.status === 'APPROVED').length / submissions.length) * 100)
@@ -201,10 +218,8 @@ export const getFinancialMetrics = async (req: Request, res: Response, next: Nex
     let totalInspections = 0;
 
     submissions.forEach(submission => {
-      // indicators is a JSON field
       const indicators = submission.indicators as any;
       
-      // Access indicators by key (e.g., "1.1", "6.1", etc.)
       if (indicators['1.1']) totalSTRs += parseFloat(indicators['1.1']) || 0;
       if (indicators['6.1']) totalCases += parseFloat(indicators['6.1']) || 0;
       if (indicators['6.4']) totalAssetsFrozen += parseFloat(indicators['6.4']) || 0;
@@ -225,7 +240,6 @@ export const getFinancialMetrics = async (req: Request, res: Response, next: Nex
       totalTransactionAmount,
       totalEnforcementActions,
       totalInspections,
-      // Monthly breakdown
       monthlyMetrics: Array.from({ length: 12 }, (_, i) => {
         const monthSubmissions = submissions.filter(s => s.month === i + 1);
         let monthlySTRs = 0;
@@ -277,7 +291,6 @@ export const exportData = async (req: Request, res: Response, next: NextFunction
         break;
 
       case 'compliance':
-        // Implement compliance export
         const organizations = await prisma.organization.findMany({
           include: {
             submissions: {
@@ -299,15 +312,15 @@ export const exportData = async (req: Request, res: Response, next: NextFunction
       default:
         return res.status(400).json({
           success: false,
-          message: 'Invalid export type'
+          message: 'Invalid export type. Use: submissions, organizations, or compliance'
         });
     }
 
-    // For now, return JSON. In production, implement CSV/Excel export
     res.json({
       success: true,
       data,
-      format
+      format,
+      count: Array.isArray(data) ? data.length : 1
     });
 
     console.log('✅ Exported data:', type);
@@ -317,9 +330,41 @@ export const exportData = async (req: Request, res: Response, next: NextFunction
   }
 };
 
-// Helper function
-function getMonthName(month: number): string {
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                  'July', 'August', 'September', 'October', 'November', 'December'];
-  return months[month - 1];
-}
+// 📊 GET SYSTEM STATISTICS
+export const getSystemStatistics = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const totalUsers = await prisma.user.count();
+    const activeUsers = await prisma.user.count({ where: { isActive: true } });
+    const totalOrgs = await prisma.organization.count();
+    const activeOrgs = await prisma.organization.count({ where: { isActive: true } });
+    const totalSubmissions = await prisma.submission.count();
+    
+    const recentActivity = await prisma.submission.findMany({
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        organization: {
+          select: { code: true, name: true }
+        },
+        submitter: {
+          select: { name: true, email: true }
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        users: { total: totalUsers, active: activeUsers },
+        organizations: { total: totalOrgs, active: activeOrgs },
+        submissions: { total: totalSubmissions },
+        recentActivity
+      }
+    });
+
+    console.log('✅ Retrieved system statistics');
+  } catch (error) {
+    console.error('❌ Get system statistics error:', error);
+    next(error);
+  }
+};

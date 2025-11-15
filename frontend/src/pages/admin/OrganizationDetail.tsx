@@ -1,5 +1,5 @@
-// src/pages/admin/OrganizationDetail.tsx
-import { useState } from 'react';
+// frontend/src/pages/admin/OrganizationDetail.tsx
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DashboardLayout from '../../components/common/DashboardLayout';
 import toast from 'react-hot-toast';
@@ -37,11 +37,12 @@ import {
 import { useAppStore, getOrgTheme } from '../../store';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import { useNotifications } from '../../utils/notificationUtils';
+import { submissionsAPI, organizationsAPI } from '../../services/api';
 
 export default function OrganizationDetail() {
   const navigate = useNavigate();
   const { orgId } = useParams();
-  const { organizations, getSubmissionsByOrg, getAllSubmissions, approveSubmission, rejectSubmission } = useAppStore();
+  const { organizations, getSubmissionsByOrg, fetchSubmissionsByOrg } = useAppStore();
   const notifications = useNotifications();
   
   const [activeTab, setActiveTab] = useState<'overview' | 'submissions' | 'analytics' | 'compare'>('overview');
@@ -51,10 +52,19 @@ export default function OrganizationDetail() {
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject'>('approve');
   const [rejectionReason, setRejectionReason] = useState('');
   const [approvalComments, setApprovalComments] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Find organization
   const organization = organizations.find(o => o.id === orgId);
   
+  // 🔥 FETCH SUBMISSIONS ON MOUNT
+  useEffect(() => {
+    if (orgId) {
+      fetchSubmissionsByOrg(orgId);
+    }
+  }, [orgId, fetchSubmissionsByOrg]);
+
   if (!organization) {
     return (
       <DashboardLayout>
@@ -74,7 +84,6 @@ export default function OrganizationDetail() {
 
   // Get submissions
   const orgSubmissions = getSubmissionsByOrg(organization.id);
-  const allSubmissions = getAllSubmissions();
 
   // Calculate organization-specific metrics
   const calculateOrgMetrics = () => {
@@ -88,7 +97,15 @@ export default function OrganizationDetail() {
     let totalInspections = 0;
 
     orgSubmissions.forEach(submission => {
-      submission.indicators.forEach(indicator => {
+      // Handle both array and object formats
+      const indicators = Array.isArray(submission.indicators) 
+        ? submission.indicators 
+        : Object.entries(submission.indicators || {}).map(([key, value]) => ({
+            number: key,
+            value: value
+          }));
+
+      indicators.forEach((indicator: any) => {
         const value = typeof indicator.value === 'number' ? indicator.value : parseFloat(indicator.value) || 0;
         
         if (indicator.number === '1.1') totalSTRs += value;
@@ -133,7 +150,8 @@ export default function OrganizationDetail() {
       submissions: orgSubmissions.filter(s => s.month === 7).length,
       compliance: orgSubmissions.find(s => s.month === 7)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 7).reduce((sum, s) => {
-        const str = s.indicators.find(i => i.number === '1.1');
+        const indicators = Array.isArray(s.indicators) ? s.indicators : Object.entries(s.indicators || {}).map(([k, v]) => ({ number: k, value: v }));
+        const str = indicators.find((i: any) => i.number === '1.1');
         return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
@@ -142,7 +160,8 @@ export default function OrganizationDetail() {
       submissions: orgSubmissions.filter(s => s.month === 8).length,
       compliance: orgSubmissions.find(s => s.month === 8)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 8).reduce((sum, s) => {
-        const str = s.indicators.find(i => i.number === '1.1');
+        const indicators = Array.isArray(s.indicators) ? s.indicators : Object.entries(s.indicators || {}).map(([k, v]) => ({ number: k, value: v }));
+        const str = indicators.find((i: any) => i.number === '1.1');
         return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
@@ -151,7 +170,8 @@ export default function OrganizationDetail() {
       submissions: orgSubmissions.filter(s => s.month === 9).length,
       compliance: orgSubmissions.find(s => s.month === 9)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 9).reduce((sum, s) => {
-        const str = s.indicators.find(i => i.number === '1.1');
+        const indicators = Array.isArray(s.indicators) ? s.indicators : Object.entries(s.indicators || {}).map(([k, v]) => ({ number: k, value: v }));
+        const str = indicators.find((i: any) => i.number === '1.1');
         return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
@@ -160,7 +180,8 @@ export default function OrganizationDetail() {
       submissions: orgSubmissions.filter(s => s.month === 10).length,
       compliance: orgSubmissions.find(s => s.month === 10)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 10).reduce((sum, s) => {
-        const str = s.indicators.find(i => i.number === '1.1');
+        const indicators = Array.isArray(s.indicators) ? s.indicators : Object.entries(s.indicators || {}).map(([k, v]) => ({ number: k, value: v }));
+        const str = indicators.find((i: any) => i.number === '1.1');
         return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
@@ -169,7 +190,8 @@ export default function OrganizationDetail() {
       submissions: orgSubmissions.filter(s => s.month === 11).length,
       compliance: orgSubmissions.find(s => s.month === 11)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 11).reduce((sum, s) => {
-        const str = s.indicators.find(i => i.number === '1.1');
+        const indicators = Array.isArray(s.indicators) ? s.indicators : Object.entries(s.indicators || {}).map(([k, v]) => ({ number: k, value: v }));
+        const str = indicators.find((i: any) => i.number === '1.1');
         return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
@@ -178,50 +200,40 @@ export default function OrganizationDetail() {
       submissions: orgSubmissions.filter(s => s.month === 12).length,
       compliance: orgSubmissions.find(s => s.month === 12)?.completionRate || 0,
       strs: orgSubmissions.filter(s => s.month === 12).reduce((sum, s) => {
-        const str = s.indicators.find(i => i.number === '1.1');
+        const indicators = Array.isArray(s.indicators) ? s.indicators : Object.entries(s.indicators || {}).map(([k, v]) => ({ number: k, value: v }));
+        const str = indicators.find((i: any) => i.number === '1.1');
         return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
       }, 0)
     },
   ];
 
-  // Submission status distribution
+  // Submission status distribution - 🔥 UPPERCASE STATUS
   const statusData = [
-    { name: 'Approved', value: orgSubmissions.filter(s => s.status === 'approved').length, color: '#10b981' },
-    { name: 'Submitted', value: orgSubmissions.filter(s => s.status === 'submitted').length, color: '#3b82f6' },
-    { name: 'Draft', value: orgSubmissions.filter(s => s.status === 'draft').length, color: '#f59e0b' },
-    { name: 'Rejected', value: orgSubmissions.filter(s => s.status === 'rejected').length, color: '#ef4444' },
+    { name: 'Approved', value: orgSubmissions.filter(s => s.status === 'APPROVED').length, color: '#10b981' },
+    { name: 'Submitted', value: orgSubmissions.filter(s => s.status === 'SUBMITTED' || s.status === 'UNDER_REVIEW').length, color: '#3b82f6' },
+    { name: 'Draft', value: orgSubmissions.filter(s => s.status === 'DRAFT').length, color: '#f59e0b' },
+    { name: 'Rejected', value: orgSubmissions.filter(s => s.status === 'REJECTED').length, color: '#ef4444' },
   ].filter(item => item.value > 0);
 
   // Performance radar data
   const performanceData = [
     { metric: 'Timeliness', value: organization.complianceScore, fullMark: 100 },
-    { metric: 'Completeness', value: orgSubmissions.length > 0 ? Math.round(orgSubmissions.reduce((sum, s) => sum + s.completionRate, 0) / orgSubmissions.length) : 0, fullMark: 100 },
+    { metric: 'Completeness', value: orgSubmissions.length > 0 ? Math.round(orgSubmissions.reduce((sum, s) => sum + (s.completionRate || 0), 0) / orgSubmissions.length) : 0, fullMark: 100 },
     { metric: 'Accuracy', value: 92, fullMark: 100 },
     { metric: 'Consistency', value: 88, fullMark: 100 },
     { metric: 'Quality', value: 95, fullMark: 100 },
   ];
 
-  // Compare with system average
-  const systemAvgSTRs = Math.round(allSubmissions.reduce((sum, s) => {
-    const str = s.indicators.find(i => i.number === '1.1');
-    return sum + (str ? (parseFloat(String(str.value)) || 0) : 0);
-  }, 0) / organizations.length);
-
-  const comparisonData = [
-    { metric: 'STRs', org: orgMetrics.totalSTRs, avg: systemAvgSTRs },
-    { metric: 'Cases', org: orgMetrics.totalCases, avg: 15 },
-    { metric: 'Convictions', org: orgMetrics.totalConvictions, avg: 3 },
-    { metric: 'Inspections', org: orgMetrics.totalInspections, avg: 25 },
-  ];
-
+  // 🔥 UPDATED STATUS BADGE - UPPERCASE
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { class: string; icon: any; text: string }> = {
-      draft: { class: 'badge-info', icon: Clock, text: 'Draft' },
-      submitted: { class: 'badge-success', icon: CheckCircle, text: 'Submitted' },
-      approved: { class: 'badge-success', icon: CheckCircle, text: 'Approved' },
-      rejected: { class: 'badge-danger', icon: XCircle, text: 'Rejected' },
+      DRAFT: { class: 'badge-info', icon: Clock, text: 'Draft' },
+      SUBMITTED: { class: 'badge-info', icon: Clock, text: 'Submitted' },
+      UNDER_REVIEW: { class: 'badge-warning', icon: Clock, text: 'Under Review' },
+      APPROVED: { class: 'badge-success', icon: CheckCircle, text: 'Approved' },
+      REJECTED: { class: 'badge-danger', icon: XCircle, text: 'Rejected' },
     };
-    const badge = badges[status] || badges.draft;
+    const badge = badges[status] || badges.DRAFT;
     const Icon = badge.icon;
     return (
       <span className={`badge ${badge.class} flex items-center space-x-1`}>
@@ -231,60 +243,80 @@ export default function OrganizationDetail() {
     );
   };
 
-  // 🔥 APPROVAL HANDLER WITH NOTIFICATIONS
-  const handleApprove = () => {
+  // 🔥 APPROVAL HANDLER WITH REAL API
+  const handleApprove = async () => {
     if (!selectedSubmission) return;
     
-    // Approve the submission
-    approveSubmission(selectedSubmission.id, approvalComments);
-    
-    // 🔔 SEND NOTIFICATION TO ORGANIZATION
-    notifications.submissionApproved(
-      organization.name,
-      selectedSubmission.month,
-      selectedSubmission.year,
-      selectedSubmission.id
-    );
-    
-    // Show toast
-    toast.success('Submission approved successfully!');
-    
-    // Close modal and reset
-    setShowApprovalModal(false);
-    setApprovalComments('');
-    setSelectedSubmission(null);
-    
-    console.log('✅ Submission approved with notification sent!');
+    setIsProcessing(true);
+    try {
+      const response = await submissionsAPI.approve(selectedSubmission.id, approvalComments);
+      
+      if (response.data.success) {
+        // 🔔 SEND NOTIFICATION TO ORGANIZATION
+        notifications.submissionApproved(
+          organization.name,
+          selectedSubmission.month,
+          selectedSubmission.year,
+          selectedSubmission.id
+        );
+        
+        // Show toast
+        toast.success('Submission approved successfully!');
+        
+        // Refresh data
+        await fetchSubmissionsByOrg(organization.id);
+        
+        // Close modal and reset
+        setShowApprovalModal(false);
+        setApprovalComments('');
+        setSelectedSubmission(null);
+      }
+    } catch (error: any) {
+      console.error('Approval error:', error);
+      toast.error(error.response?.data?.message || 'Failed to approve submission');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  // 🔥 REJECTION HANDLER WITH NOTIFICATIONS
-  const handleReject = () => {
+  // 🔥 REJECTION HANDLER WITH REAL API
+  const handleReject = async () => {
     if (!selectedSubmission || !rejectionReason.trim()) {
       toast.error('Please provide a rejection reason');
       return;
     }
     
-    // Reject the submission
-    rejectSubmission(selectedSubmission.id, rejectionReason);
-    
-    // 🔔 SEND NOTIFICATION TO ORGANIZATION WITH REASON
-    notifications.submissionRejected(
-      organization.name,
-      selectedSubmission.month,
-      selectedSubmission.year,
-      rejectionReason,
-      selectedSubmission.id
-    );
-    
-    // Show toast
-    toast.error('Submission rejected');
-    
-    // Close modal and reset
-    setShowApprovalModal(false);
-    setRejectionReason('');
-    setSelectedSubmission(null);
-    
-    console.log('❌ Submission rejected with notification sent!');
+    setIsProcessing(true);
+    try {
+      const response = await submissionsAPI.reject(selectedSubmission.id, rejectionReason);
+      
+      if (response.data.success) {
+        // 🔔 SEND NOTIFICATION TO ORGANIZATION WITH REASON
+        notifications.submissionRejected(
+          organization.name,
+          selectedSubmission.month,
+          selectedSubmission.year,
+          rejectionReason,
+          selectedSubmission.id
+        );
+        
+        // Show toast
+        toast.error('Submission rejected');
+        
+        // Refresh data
+        await fetchSubmissionsByOrg(organization.id);
+        
+        // Close modal and reset
+        setShowApprovalModal(false);
+        setRejectionReason('');
+        setSelectedSubmission(null);
+      }
+    } catch (error: any) {
+      console.error('Rejection error:', error);
+      toast.error(error.response?.data?.message || 'Failed to reject submission');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const openApprovalModal = (submission: any, action: 'approve' | 'reject') => {
@@ -299,11 +331,11 @@ export default function OrganizationDetail() {
         {/* Header with Gradient */}
         <div className={`bg-gradient-to-r ${theme.gradient} rounded-2xl p-8 text-white shadow-2xl`}>
           <button
-            onClick={() => navigate('/admin/dashboard')}
+            onClick={() => navigate('/admin/organizations')}
             className="mb-4 flex items-center space-x-2 text-white/80 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
-            <span>Back to Dashboard</span>
+            <span>Back to Organizations</span>
           </button>
           
           <div className="flex items-start justify-between">
@@ -352,7 +384,7 @@ export default function OrganizationDetail() {
                 </button>
                 <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm px-4 py-2 rounded-lg font-semibold transition-colors flex items-center space-x-2">
                   <Send className="w-4 h-4" />
-                  <span>Send Message</span>
+                  <span>Message</span>
                 </button>
               </div>
             </div>
@@ -400,7 +432,11 @@ export default function OrganizationDetail() {
           <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-2">
               <Calendar className="w-8 h-8 text-blue-500" />
-              <span className="text-sm font-bold text-blue-500">{organization.lastSubmissionDate?.toLocaleDateString() || 'N/A'}</span>
+              <span className="text-sm font-bold text-blue-500">
+                {organization.lastSubmissionDate 
+                  ? new Date(organization.lastSubmissionDate).toLocaleDateString() 
+                  : 'N/A'}
+              </span>
             </div>
             <h3 className="text-gray-600 font-medium text-sm">Last Submission</h3>
             <p className="text-xs text-gray-500 mt-1">Date</p>
@@ -446,18 +482,6 @@ export default function OrganizationDetail() {
               >
                 <BarChart3 className="w-5 h-5 inline mr-2" />
                 Analytics
-              </button>
-              <button
-                onClick={() => setActiveTab('compare')}
-                className={`px-6 py-4 font-semibold transition-colors ${
-                  activeTab === 'compare'
-                    ? 'border-b-2 text-fia-navy'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-                style={activeTab === 'compare' ? { borderColor: theme.primary } : {}}
-              >
-                <TrendingUp className="w-5 h-5 inline mr-2" />
-                Compare
               </button>
             </div>
           </div>
@@ -522,25 +546,31 @@ export default function OrganizationDetail() {
                   {/* Status Distribution */}
                   <div className="bg-gray-50 rounded-xl p-6">
                     <h4 className="text-lg font-bold text-gray-900 mb-4">Submission Status</h4>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={statusData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, value }) => `${name}: ${value}`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {statusData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    {statusData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={250}>
+                        <PieChart>
+                          <Pie
+                            data={statusData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, value }) => `${name}: ${value}`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {statusData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[250px] text-gray-500">
+                        <p>No data to display</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -587,7 +617,9 @@ export default function OrganizationDetail() {
                               {getStatusBadge(submission.status)}
                               <span className="text-sm text-gray-500">
                                 <Calendar className="w-4 h-4 inline mr-1" />
-                                {submission.submittedAt?.toLocaleDateString() || 'Not submitted'}
+                                {submission.submittedAt 
+                                  ? new Date(submission.submittedAt).toLocaleDateString() 
+                                  : 'Not submitted'}
                               </span>
                             </div>
 
@@ -610,12 +642,13 @@ export default function OrganizationDetail() {
                               </div>
                             </div>
 
-                            {submission.comments && (
+                            {/* FIA Feedback */}
+                            {submission.reviewNotes && (
                               <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start space-x-2">
                                 <MessageSquare className="w-5 h-5 text-yellow-600 mt-0.5" />
                                 <div>
                                   <p className="font-semibold text-yellow-900 text-sm">Admin Feedback</p>
-                                  <p className="text-sm text-yellow-800">{submission.comments}</p>
+                                  <p className="text-sm text-yellow-800">{submission.reviewNotes}</p>
                                 </div>
                               </div>
                             )}
@@ -634,18 +667,20 @@ export default function OrganizationDetail() {
                               <span>View</span>
                             </button>
 
-                            {submission.status === 'submitted' && (
+                            {(submission.status === 'SUBMITTED' || submission.status === 'UNDER_REVIEW') && (
                               <>
                                 <button
                                   onClick={() => openApprovalModal(submission, 'approve')}
-                                  className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center space-x-2"
+                                  disabled={isProcessing}
+                                  className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center space-x-2 disabled:opacity-50"
                                 >
                                   <ThumbsUp className="w-5 h-5" />
                                   <span>Approve</span>
                                 </button>
                                 <button
                                   onClick={() => openApprovalModal(submission, 'reject')}
-                                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center space-x-2"
+                                  disabled={isProcessing}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center space-x-2 disabled:opacity-50"
                                 >
                                   <ThumbsDown className="w-5 h-5" />
                                   <span>Reject</span>
@@ -708,54 +743,6 @@ export default function OrganizationDetail() {
                 </div>
               </div>
             )}
-
-            {/* COMPARE TAB */}
-            {activeTab === 'compare' && (
-              <div className="space-y-6">
-                <h3 className="text-xl font-bold text-gray-900">Compare with System Average</h3>
-                
-                <div className="bg-gray-50 rounded-xl p-6">
-                  <h4 className="text-lg font-bold text-gray-900 mb-4">Organization vs System Average</h4>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={comparisonData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="metric" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="org" fill={theme.primary} name={organization.name} radius={[8, 8, 0, 0]} />
-                      <Bar dataKey="avg" fill="#94a3b8" name="System Average" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Performance Insights */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-6">
-                    <h4 className="font-bold text-green-900 mb-3 flex items-center space-x-2">
-                      <CheckCircle className="w-5 h-5" />
-                      <span>Strengths</span>
-                    </h4>
-                    <ul className="space-y-2 text-sm text-green-800">
-                      <li>• High compliance score ({organization.complianceScore}%)</li>
-                      <li>• Timely submissions</li>
-                      <li>• Quality data reporting</li>
-                    </ul>
-                  </div>
-
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
-                    <h4 className="font-bold text-yellow-900 mb-3 flex items-center space-x-2">
-                      <AlertTriangle className="w-5 h-5" />
-                      <span>Areas for Improvement</span>
-                    </h4>
-                    <ul className="space-y-2 text-sm text-yellow-800">
-                      <li>• Increase enforcement actions</li>
-                      <li>• Improve data completeness</li>
-                      <li>• More proactive inspections</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -796,19 +783,11 @@ export default function OrganizationDetail() {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-4">Indicators</h3>
-                  <div className="space-y-2">
-                    {selectedSubmission.indicators.slice(0, 20).map((indicator: any, idx: number) => (
-                      <div key={idx} className="flex justify-between p-3 bg-gray-50 rounded-lg">
-                        <span className="text-sm text-gray-600">{indicator.number} - {indicator.name || 'Indicator'}</span>
-                        <span className="font-semibold text-gray-900">{indicator.value || 'N/A'}</span>
-                      </div>
-                    ))}
-                    {selectedSubmission.indicators.length > 20 && (
-                      <p className="text-center text-sm text-gray-500 py-2">
-                        ... and {selectedSubmission.indicators.length - 20} more indicators
-                      </p>
-                    )}
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Indicators Summary</h3>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-800">
+                      {selectedSubmission.filledIndicators} of {selectedSubmission.totalIndicators} indicators filled
+                    </p>
                   </div>
                 </div>
               </div>
@@ -833,7 +812,11 @@ export default function OrganizationDetail() {
                     })}
                   </p>
                 </div>
-                <button onClick={() => setShowApprovalModal(false)} className="p-2 hover:bg-white/20 rounded-lg">
+                <button 
+                  onClick={() => setShowApprovalModal(false)} 
+                  disabled={isProcessing}
+                  className="p-2 hover:bg-white/20 rounded-lg disabled:opacity-50"
+                >
                   <X className="w-6 h-6" />
                 </button>
               </div>
@@ -852,20 +835,23 @@ export default function OrganizationDetail() {
                       placeholder="Add any comments for the organization..."
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
                       rows={4}
+                      disabled={isProcessing}
                     />
                   </div>
 
                   <div className="flex space-x-3">
                     <button
                       onClick={handleApprove}
-                      className="flex-1 bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-bold flex items-center justify-center space-x-2"
+                      disabled={isProcessing}
+                      className="flex-1 bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-bold flex items-center justify-center space-x-2 disabled:opacity-50"
                     >
                       <ThumbsUp className="w-5 h-5" />
-                      <span>Approve Submission</span>
+                      <span>{isProcessing ? 'Approving...' : 'Approve Submission'}</span>
                     </button>
                     <button
                       onClick={() => setShowApprovalModal(false)}
-                      className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50"
+                      disabled={isProcessing}
+                      className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 disabled:opacity-50"
                     >
                       Cancel
                     </button>
@@ -883,6 +869,7 @@ export default function OrganizationDetail() {
                       placeholder="Please provide a detailed reason for rejection..."
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                       rows={4}
+                      disabled={isProcessing}
                     />
                   </div>
 
@@ -901,14 +888,16 @@ export default function OrganizationDetail() {
                   <div className="flex space-x-3">
                     <button
                       onClick={handleReject}
-                      className="flex-1 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-bold flex items-center justify-center space-x-2"
+                      disabled={isProcessing || !rejectionReason.trim()}
+                      className="flex-1 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-bold flex items-center justify-center space-x-2 disabled:opacity-50"
                     >
                       <ThumbsDown className="w-5 h-5" />
-                      <span>Reject Submission</span>
+                      <span>{isProcessing ? 'Rejecting...' : 'Reject Submission'}</span>
                     </button>
                     <button
                       onClick={() => setShowApprovalModal(false)}
-                      className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50"
+                      disabled={isProcessing}
+                      className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 disabled:opacity-50"
                     >
                       Cancel
                     </button>

@@ -1,13 +1,12 @@
-// src/controllers/organizationController.ts
+// backend/src/controllers/organizationController.ts
 import { Request, Response, NextFunction } from 'express';
-import prisma from '../config/prisma'; 
+import prisma from '../config/prisma';
 
 // 🏢 GET ALL ORGANIZATIONS
 export const getAllOrganizations = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { type, isActive, search } = req.query;
 
-    // Build Prisma where clause
     const where: any = {};
 
     if (type) where.type = type;
@@ -23,7 +22,12 @@ export const getAllOrganizations = async (req: Request, res: Response, next: Nex
       where,
       orderBy: { name: 'asc' },
       include: {
-        submissions: true
+        submissions: true,
+        _count: {
+          select: {
+            users: true
+          }
+        }
       }
     });
 
@@ -31,10 +35,12 @@ export const getAllOrganizations = async (req: Request, res: Response, next: Nex
     const orgsWithStats = organizations.map((org) => {
       const totalSubmissions = org.submissions.length;
       const completedSubmissions = org.submissions.filter(s => s.status === 'APPROVED').length;
-      const pendingSubmissions = org.submissions.filter(s => s.status === 'SUBMITTED').length;
+      const pendingSubmissions = org.submissions.filter(s => s.status === 'SUBMITTED' || s.status === 'UNDER_REVIEW').length;
       const overdueSubmissions = org.overdueSubmissions;
 
-      const complianceScore = org.complianceScore;
+      const complianceScore = totalSubmissions > 0 
+        ? Math.round((completedSubmissions / totalSubmissions) * 100)
+        : 0;
 
       const lastSubmission = org.submissions
         .filter(s => s.submittedAt)
@@ -48,6 +54,7 @@ export const getAllOrganizations = async (req: Request, res: Response, next: Nex
         sector: org.sector,
         contactEmail: org.contactEmail,
         contactPhone: org.contactPhone,
+        address: org.address,
         isActive: org.isActive,
         createdAt: org.createdAt,
         totalSubmissions,
@@ -55,7 +62,8 @@ export const getAllOrganizations = async (req: Request, res: Response, next: Nex
         pendingSubmissions,
         overdueSubmissions,
         complianceScore,
-        lastSubmissionDate: lastSubmission?.submittedAt || null
+        lastSubmissionDate: lastSubmission?.submittedAt || null,
+        userCount: org._count.users
       };
     });
 
@@ -79,8 +87,22 @@ export const getOrganizationById = async (req: Request, res: Response, next: Nex
     const organization = await prisma.organization.findUnique({
       where: { id },
       include: {
-        submissions: true,
-        users: true
+        submissions: {
+          orderBy: [
+            { year: 'desc' },
+            { month: 'desc' }
+          ]
+        },
+        users: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            isActive: true,
+            lastLogin: true
+          }
+        }
       }
     });
 
@@ -102,7 +124,7 @@ export const getOrganizationById = async (req: Request, res: Response, next: Nex
     // Get statistics
     const totalSubmissions = organization.submissions.length;
     const completedSubmissions = organization.submissions.filter(s => s.status === 'APPROVED').length;
-    const pendingSubmissions = organization.submissions.filter(s => s.status === 'SUBMITTED').length;
+    const pendingSubmissions = organization.submissions.filter(s => s.status === 'SUBMITTED' || s.status === 'UNDER_REVIEW').length;
     const rejectedSubmissions = organization.submissions.filter(s => s.status === 'REJECTED').length;
 
     const complianceScore = totalSubmissions > 0 
@@ -194,7 +216,8 @@ export const updateOrganization = async (req: Request, res: Response, next: Next
       registrationNo,
       contactEmail, 
       contactPhone,
-      address 
+      address,
+      isActive
     } = req.body;
 
     const organization = await prisma.organization.findUnique({
@@ -217,7 +240,8 @@ export const updateOrganization = async (req: Request, res: Response, next: Next
         registrationNo,
         contactEmail,
         contactPhone,
-        address
+        address,
+        isActive
       }
     });
 
@@ -293,7 +317,7 @@ export const deleteOrganization = async (req: Request, res: Response, next: Next
     if (organization.submissions.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot delete organization with existing submissions'
+        message: 'Cannot delete organization with existing submissions. Deactivate instead.'
       });
     }
 
@@ -301,7 +325,7 @@ export const deleteOrganization = async (req: Request, res: Response, next: Next
     if (organization.users.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot delete organization with existing users'
+        message: 'Cannot delete organization with existing users. Deactivate instead.'
       });
     }
 
@@ -369,13 +393,6 @@ export const getOrganizationStatistics = async (req: Request, res: Response, nex
       };
     });
 
-    // Calculate aggregate metrics from submissions
-    const totalSTRs = submissions.reduce((sum, s) => {
-      const indicators = s.indicators as any;
-      const strValue = indicators['1.1'];
-      return sum + (strValue ? parseFloat(strValue) || 0 : 0);
-    }, 0);
-
     const statistics = {
       organization: {
         id: organization.id,
@@ -385,17 +402,13 @@ export const getOrganizationStatistics = async (req: Request, res: Response, nex
       year: parseInt(year as string),
       totalSubmissions: submissions.length,
       completedSubmissions: submissions.filter(s => s.status === 'APPROVED').length,
-      pendingSubmissions: submissions.filter(s => s.status === 'SUBMITTED').length,
+      pendingSubmissions: submissions.filter(s => s.status === 'SUBMITTED' || s.status === 'UNDER_REVIEW').length,
       rejectedSubmissions: submissions.filter(s => s.status === 'REJECTED').length,
       draftSubmissions: submissions.filter(s => s.status === 'DRAFT').length,
-      avgCompletionRate: Math.round(
-        submissions.reduce((sum, s) => sum + s.completionRate, 0) / (submissions.length || 1)
-      ),
-      monthlyStats,
-      metrics: {
-        totalSTRs,
-        // Add more metrics as needed
-      }
+      avgCompletionRate: submissions.length > 0
+        ? Math.round(submissions.reduce((sum, s) => sum + s.completionRate, 0) / submissions.length)
+        : 0,
+      monthlyStats
     };
 
     res.json({

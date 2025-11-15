@@ -1,4 +1,5 @@
-import { useState } from 'react';
+// frontend/src/pages/organization/Reports.tsx
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/common/DashboardLayout';
 import { 
@@ -12,7 +13,6 @@ import {
   Eye,
   Download,
   Search,
-  Filter,
   ArrowLeft,
   X,
   AlertTriangle
@@ -23,7 +23,13 @@ import type { MonthlySubmission } from '../../types';
 
 export default function Reports() {
   const navigate = useNavigate();
-  const { currentUser, getSubmissionsByOrg } = useAppStore();
+  const { 
+    currentUser, 
+    getSubmissionsByOrg,
+    fetchSubmissionsByOrg,
+    isLoadingSubmissions
+  } = useAppStore();
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterMonth, setFilterMonth] = useState('all');
@@ -31,21 +37,42 @@ export default function Reports() {
   const [showDetailModal, setShowDetailModal] = useState(false);
 
   const org = currentUser?.organization;
-  if (!org) return <div>Loading...</div>;
+
+  // 🔥 FETCH DATA ON MOUNT
+  useEffect(() => {
+    if (org?.id) {
+      fetchSubmissionsByOrg(org.id);
+    }
+  }, [org?.id, fetchSubmissionsByOrg]);
+
+  if (!org) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-fia-navy mb-4"></div>
+            <p className="text-gray-600 text-lg">Loading organization...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   // Get all submissions for this organization
   const mySubmissions = getSubmissionsByOrg(org.id);
 
-  // Calculate analytics
+  // Calculate analytics - 🔥 UPPERCASE STATUS
   const totalSubmissions = mySubmissions.length;
-  const submittedReports = mySubmissions.filter(s => s.status === 'submitted' || s.status === 'approved').length;
-  const approvedReports = mySubmissions.filter(s => s.status === 'approved').length;
-  const rejectedReports = mySubmissions.filter(s => s.status === 'rejected').length;
-  const draftReports = mySubmissions.filter(s => s.status === 'draft').length;
+  const submittedReports = mySubmissions.filter(s => 
+    s.status === 'SUBMITTED' || s.status === 'APPROVED' || s.status === 'UNDER_REVIEW'
+  ).length;
+  const approvedReports = mySubmissions.filter(s => s.status === 'APPROVED').length;
+  const rejectedReports = mySubmissions.filter(s => s.status === 'REJECTED').length;
+  const draftReports = mySubmissions.filter(s => s.status === 'DRAFT').length;
   
-  const totalIndicatorsFilled = mySubmissions.reduce((sum, s) => sum + s.filledIndicators, 0);
+  const totalIndicatorsFilled = mySubmissions.reduce((sum, s) => sum + (s.filledIndicators || 0), 0);
   const averageCompletionRate = totalSubmissions > 0 
-    ? Math.round(mySubmissions.reduce((sum, s) => sum + s.completionRate, 0) / totalSubmissions) 
+    ? Math.round(mySubmissions.reduce((sum, s) => sum + (s.completionRate || 0), 0) / totalSubmissions) 
     : 0;
 
   // Monthly trend data
@@ -66,10 +93,20 @@ export default function Reports() {
     { name: 'Rejected', value: rejectedReports, color: '#ef4444' },
   ].filter(item => item.value > 0);
 
-  // Section breakdown (aggregate all indicators by section)
+  // Section breakdown - handle both array and object formats
   const sectionBreakdown = mySubmissions.reduce((acc, submission) => {
-    submission.indicators.forEach(indicator => {
-      const section = indicator.section;
+    const indicators = Array.isArray(submission.indicators) 
+      ? submission.indicators 
+      : Object.entries(submission.indicators || {}).map(([key, value]) => ({
+          section: key.split('.')[0],
+          number: key,
+          value: value,
+          description: '',
+          required: true
+        }));
+
+    indicators.forEach((indicator: any) => {
+      const section = indicator.section || indicator.number?.split('.')[0] || 'A';
       if (!acc[section]) {
         acc[section] = { section, total: 0, filled: 0 };
       }
@@ -83,14 +120,15 @@ export default function Reports() {
     section: `Section ${item.section}`,
     filled: item.filled,
     total: item.total,
-    percentage: Math.round((item.filled / item.total) * 100),
+    percentage: item.total > 0 ? Math.round((item.filled / item.total) * 100) : 0,
   }));
 
-  // Filter submissions
+  // Filter submissions - 🔥 UPPERCASE COMPARISON
   const filteredSubmissions = mySubmissions.filter(sub => {
+    const monthName = new Date(sub.year, sub.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     const matchesSearch = 
       sub.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      new Date(sub.year, sub.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toLowerCase().includes(searchQuery.toLowerCase());
+      monthName.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = filterStatus === 'all' || sub.status === filterStatus;
     const matchesMonth = filterMonth === 'all' || sub.month.toString() === filterMonth;
@@ -98,14 +136,16 @@ export default function Reports() {
     return matchesSearch && matchesStatus && matchesMonth;
   });
 
+  // 🔥 UPDATED STATUS BADGE - UPPERCASE
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { class: string; icon: any; text: string }> = {
-      draft: { class: 'badge-info', icon: Clock, text: 'Draft' },
-      submitted: { class: 'badge-success', icon: CheckCircle, text: 'Submitted' },
-      approved: { class: 'badge-success', icon: CheckCircle, text: 'Approved' },
-      rejected: { class: 'badge-danger', icon: XCircle, text: 'Rejected' },
+      DRAFT: { class: 'badge-info', icon: Clock, text: 'Draft' },
+      SUBMITTED: { class: 'badge-info', icon: Clock, text: 'Submitted' },
+      UNDER_REVIEW: { class: 'badge-warning', icon: Clock, text: 'Under Review' },
+      APPROVED: { class: 'badge-success', icon: CheckCircle, text: 'Approved' },
+      REJECTED: { class: 'badge-danger', icon: XCircle, text: 'Rejected' },
     };
-    const badge = badges[status] || badges.draft;
+    const badge = badges[status] || badges.DRAFT;
     const Icon = badge.icon;
     return (
       <span className={`badge ${badge.class} flex items-center space-x-1`}>
@@ -126,6 +166,20 @@ export default function Reports() {
     };
     return sections[section] || section;
   };
+
+  // 🔥 LOADING STATE
+  if (isLoadingSubmissions) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-fia-navy mb-4"></div>
+            <p className="text-gray-600 text-lg">Loading reports...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -287,10 +341,11 @@ export default function Reports() {
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-fia-teal"
               >
                 <option value="all">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="submitted">Submitted</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
+                <option value="DRAFT">Draft</option>
+                <option value="SUBMITTED">Submitted</option>
+                <option value="UNDER_REVIEW">Under Review</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
               </select>
               <select
                 value={filterMonth}
@@ -325,7 +380,7 @@ export default function Reports() {
                           {getStatusBadge(submission.status)}
                           <span className="text-sm text-gray-500">
                             <Calendar className="w-4 h-4 inline mr-1" />
-                            Submitted: {submission.submittedAt?.toLocaleDateString() || 'Not submitted'}
+                            Submitted: {submission.submittedAt ? new Date(submission.submittedAt).toLocaleDateString() : 'Not submitted'}
                           </span>
                         </div>
 
@@ -344,30 +399,32 @@ export default function Reports() {
                           </div>
                           <div className="p-3 bg-purple-50 rounded-lg">
                             <p className="text-sm text-gray-600">Submitted By</p>
-                            <p className="font-bold text-purple-600 text-sm">{submission.submittedBy}</p>
+                            <p className="font-bold text-purple-600 text-sm">{submission.submittedBy || 'N/A'}</p>
                           </div>
                         </div>
 
                         {/* FIA Feedback */}
-                        {submission.status === 'approved' && (
+                        {submission.status === 'APPROVED' && (
                           <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg flex items-start space-x-2">
                             <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                             <div>
                               <p className="font-semibold text-green-900">Approved by FIA</p>
                               <p className="text-sm text-green-700">
-                                {submission.approvedAt?.toLocaleDateString()} - Report accepted for analysis
+                                {submission.reviewedAt 
+                                  ? new Date(submission.reviewedAt).toLocaleDateString()
+                                  : 'Recently approved'} - Report accepted for analysis
                               </p>
                             </div>
                           </div>
                         )}
 
-                        {submission.status === 'rejected' && (
+                        {submission.status === 'REJECTED' && (
                           <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-2">
                             <XCircle className="w-5 h-5 text-red-600 mt-0.5" />
                             <div>
                               <p className="font-semibold text-red-900">Rejected by FIA</p>
                               <p className="text-sm text-red-700">
-                                {submission.comments || 'Please review and resubmit with corrections'}
+                                {submission.reviewNotes || submission.comments || 'Please review and resubmit with corrections'}
                               </p>
                             </div>
                           </div>
@@ -473,42 +530,44 @@ export default function Reports() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Submitted By:</span>
-                    <span className="font-semibold">{selectedReport.submittedBy}</span>
+                    <span className="font-semibold">{selectedReport.submittedBy || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Submitted At:</span>
-                    <span className="font-semibold">{selectedReport.submittedAt?.toLocaleString() || 'N/A'}</span>
+                    <span className="font-semibold">
+                      {selectedReport.submittedAt ? new Date(selectedReport.submittedAt).toLocaleString() : 'N/A'}
+                    </span>
                   </div>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                   <h3 className="font-bold text-gray-900 mb-3">FIA Review Status</h3>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Status:</span>
-                    <span className="font-semibold capitalize">{selectedReport.status}</span>
+                    <span className="font-semibold capitalize">{selectedReport.status.replace('_', ' ')}</span>
                   </div>
-                  {selectedReport.approvedBy && (
+                  {selectedReport.reviewedBy && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Reviewed By:</span>
-                      <span className="font-semibold">{selectedReport.approvedBy}</span>
+                      <span className="font-semibold">{selectedReport.reviewedBy}</span>
                     </div>
                   )}
-                  {selectedReport.approvedAt && (
+                  {selectedReport.reviewedAt && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Reviewed At:</span>
-                      <span className="font-semibold">{selectedReport.approvedAt.toLocaleString()}</span>
+                      <span className="font-semibold">{new Date(selectedReport.reviewedAt).toLocaleString()}</span>
                     </div>
                   )}
                 </div>
               </div>
 
               {/* FIA Comments */}
-              {selectedReport.comments && (
+              {(selectedReport.reviewNotes || selectedReport.comments) && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <div className="flex items-start space-x-3">
                     <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
                     <div>
                       <h3 className="font-bold text-yellow-900 mb-1">FIA Comments</h3>
-                      <p className="text-yellow-800">{selectedReport.comments}</p>
+                      <p className="text-yellow-800">{selectedReport.reviewNotes || selectedReport.comments}</p>
                     </div>
                   </div>
                 </div>
@@ -516,46 +575,60 @@ export default function Reports() {
 
               {/* Indicators by Section */}
               <div>
-                <h3 className="font-bold text-gray-900 mb-4">All Indicators ({selectedReport.indicators.length})</h3>
+                <h3 className="font-bold text-gray-900 mb-4">All Indicators</h3>
                 
-                {/* Group by section */}
-                {['A', 'B', 'C', 'D', 'E', 'F'].map(section => {
-                  const sectionIndicators = selectedReport.indicators.filter(i => i.section === section);
-                  if (sectionIndicators.length === 0) return null;
+                {/* Handle both array and object indicators */}
+                {(() => {
+                  const indicators = Array.isArray(selectedReport.indicators) 
+                    ? selectedReport.indicators 
+                    : Object.entries(selectedReport.indicators || {}).map(([key, value]) => ({
+                        section: key.split('.')[0],
+                        number: key,
+                        value: value,
+                        description: key,
+                        required: true
+                      }));
 
-                  return (
-                    <div key={section} className="mb-6">
-                      <h4 className="font-bold text-fia-navy mb-3 flex items-center space-x-2">
-                        <span className="bg-fia-navy text-white w-8 h-8 rounded-full flex items-center justify-center">
-                          {section}
-                        </span>
-                        <span>Section {section}: {getSectionName(section)}</span>
-                      </h4>
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 w-24">Number</th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700">Description</th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 w-32">Value</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200">
-                            {sectionIndicators.map((indicator, idx) => (
-                              <tr key={idx} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-semibold text-fia-navy">{indicator.number}</td>
-                                <td className="px-4 py-3 text-gray-700">{indicator.description}</td>
-                                <td className="px-4 py-3">
-                                  <span className="font-bold text-fia-teal">{indicator.value || '-'}</span>
-                                </td>
+                  return ['A', 'B', 'C', 'D', 'E', 'F'].map(section => {
+                    const sectionIndicators = indicators.filter((i: any) => 
+                      (i.section || i.number?.split('.')[0]) === section
+                    );
+                    if (sectionIndicators.length === 0) return null;
+
+                    return (
+                      <div key={section} className="mb-6">
+                        <h4 className="font-bold text-fia-navy mb-3 flex items-center space-x-2">
+                          <span className="bg-fia-navy text-white w-8 h-8 rounded-full flex items-center justify-center">
+                            {section}
+                          </span>
+                          <span>Section {section}: {getSectionName(section)}</span>
+                        </h4>
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 text-left font-bold text-gray-700 w-24">Number</th>
+                                <th className="px-4 py-3 text-left font-bold text-gray-700">Description</th>
+                                <th className="px-4 py-3 text-left font-bold text-gray-700 w-32">Value</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {sectionIndicators.map((indicator: any, idx: number) => (
+                                <tr key={idx} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 font-semibold text-fia-navy">{indicator.number}</td>
+                                  <td className="px-4 py-3 text-gray-700">{indicator.description}</td>
+                                  <td className="px-4 py-3">
+                                    <span className="font-bold text-fia-teal">{indicator.value || '-'}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
 
               {/* Actions */}

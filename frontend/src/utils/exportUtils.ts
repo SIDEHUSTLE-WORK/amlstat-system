@@ -44,9 +44,9 @@ export const exportToCSV = (data: any[], filename: string) => {
 export const exportComplianceReport = (organizations: Organization[], submissions: MonthlySubmission[]) => {
   const reportData = organizations.map(org => {
     const orgSubs = submissions.filter(s => s.organizationId === org.id);
-    const approved = orgSubs.filter(s => s.status === 'approved').length;
-    const pending = orgSubs.filter(s => s.status === 'submitted').length;
-    const rejected = orgSubs.filter(s => s.status === 'rejected').length;
+    const approved = orgSubs.filter(s => s.status === 'APPROVED').length;
+const pending = orgSubs.filter(s => s.status === 'SUBMITTED').length;
+const rejected = orgSubs.filter(s => s.status === 'REJECTED').length;
     const compliance = orgSubs.length > 0 ? Math.round((approved / orgSubs.length) * 100) : 0;
 
     return {

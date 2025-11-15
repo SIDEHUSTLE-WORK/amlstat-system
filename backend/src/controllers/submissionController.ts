@@ -1,13 +1,119 @@
-// src/controllers/submissionController.ts
+// backend/src/controllers/submissionController.ts
 import { Request, Response, NextFunction } from 'express';
-import prisma from '../config/prisma'; 
+import prisma from '../config/prisma';
+
+// Helper function
+function getMonthName(month: number): string {
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                  'July', 'August', 'September', 'October', 'November', 'December'];
+  return months[month - 1];
+}
+
+// 🔥 GET DASHBOARD STATS (REAL CALCULATIONS)
+export const getDashboardStats = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentYear = now.getFullYear();
+    
+    // Helper: Check if overdue
+    const isOverdue = (lastMonth: number, lastYear: number) => {
+      if (currentYear > lastYear) return true;
+      if (currentYear === lastYear && currentMonth > lastMonth) return true;
+      return false;
+    };
+    
+    // Total active organizations
+    const totalOrganizations = await prisma.organization.count({
+      where: { isActive: true }
+    });
+    
+    // Get all organizations with their last submission
+    const organizations = await prisma.organization.findMany({
+      where: { isActive: true },
+      include: {
+        submissions: {
+          orderBy: [
+            { year: 'desc' },
+            { month: 'desc' }
+          ],
+          take: 1
+        }
+      }
+    });
+    
+    // Calculate real-time stats
+    let pendingSubmissions = 0;
+    let overdueSubmissions = 0;
+    let completedThisMonth = 0;
+    
+    organizations.forEach(org => {
+      const lastSubmission = org.submissions[0];
+      
+      if (!lastSubmission) {
+        // Never submitted - overdue
+        overdueSubmissions++;
+      } else if (lastSubmission.year === currentYear && lastSubmission.month === currentMonth) {
+        // Submitted this month
+        if (lastSubmission.status === 'APPROVED') {
+          completedThisMonth++;
+        }
+      } else if (isOverdue(lastSubmission.month, lastSubmission.year)) {
+        // Overdue
+        overdueSubmissions++;
+      } else {
+        // Due this month (pending)
+        pendingSubmissions++;
+      }
+    });
+    
+    // Total submissions ever
+    const totalSubmissions = await prisma.submission.count();
+    
+    // Approved submissions
+    const approvedSubmissions = await prisma.submission.count({
+      where: { status: 'APPROVED' }
+    });
+    
+    const currentMonthName = `${getMonthName(currentMonth)} ${currentYear}`;
+    
+    res.json({
+      success: true,
+      data: {
+        totalOrganizations,
+        activeOrganizations: totalOrganizations,
+        totalSubmissions,
+        pendingSubmissions,
+        completedSubmissions: approvedSubmissions,
+        overdueSubmissions,
+        currentMonthSubmissions: completedThisMonth,
+        currentMonthPending: pendingSubmissions,
+        averageComplianceRate: totalOrganizations > 0 && totalSubmissions > 0
+          ? Math.round((approvedSubmissions / totalSubmissions) * 100)
+          : 0,
+        currentMonth: currentMonthName,
+        currentMonthNumber: currentMonth,
+        currentYear: currentYear
+      }
+    });
+    
+    console.log('✅ Dashboard stats:', {
+      pending: pendingSubmissions,
+      overdue: overdueSubmissions,
+      completed: completedThisMonth
+    });
+    
+  } catch (error) {
+    console.error('❌ Get dashboard stats error:', error);
+    next(error);
+  }
+};
 
 // 📊 GET ALL SUBMISSIONS (Admin)
 export const getAllSubmissions = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status, month, year, organizationId, page = 1, limit = 20 } = req.query;
 
-    // Build Prisma where clause
     const where: any = {};
 
     if (status) where.status = status;
@@ -17,7 +123,6 @@ export const getAllSubmissions = async (req: Request, res: Response, next: NextF
 
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    // Get count and submissions
     const [count, submissions] = await Promise.all([
       prisma.submission.count({ where }),
       prisma.submission.findMany({
@@ -221,7 +326,7 @@ export const createSubmission = async (req: Request, res: Response, next: NextFu
         month,
         year,
         status: 'DRAFT',
-        indicators: indicators, // JSON field
+        indicators: indicators,
         filledIndicators,
         totalIndicators,
         completionRate,
@@ -302,8 +407,8 @@ export const updateSubmission = async (req: Request, res: Response, next: NextFu
         filledIndicators,
         totalIndicators,
         completionRate,
-        status: 'DRAFT', // Reset to draft if it was rejected
-        reviewNotes: null // Clear rejection reason
+        status: 'DRAFT',
+        reviewNotes: null
       },
       include: {
         organization: true,
@@ -430,8 +535,6 @@ export const approveSubmission = async (req: Request, res: Response, next: NextF
       }
     });
 
-    // TODO: Send notification to organization
-
     res.json({
       success: true,
       message: 'Submission approved successfully',
@@ -488,8 +591,6 @@ export const rejectSubmission = async (req: Request, res: Response, next: NextFu
         reviewedBy: req.user!.id
       }
     });
-
-    // TODO: Send notification to organization
 
     res.json({
       success: true,
@@ -605,10 +706,3 @@ export const getSubmissionStatistics = async (req: Request, res: Response, next:
     next(error);
   }
 };
-
-// Helper function
-function getMonthName(month: number): string {
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                  'July', 'August', 'September', 'October', 'November', 'December'];
-  return months[month - 1];
-}

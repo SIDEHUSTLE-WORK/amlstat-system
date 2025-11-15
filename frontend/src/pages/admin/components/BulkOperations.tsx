@@ -1,48 +1,109 @@
-// src/pages/admin/components/BulkOperations.tsx
+// frontend/src/pages/admin/components/BulkOperations.tsx
 import { useState } from 'react';
-import { X, Power, Trash2, Mail, Download, CheckCircle } from 'lucide-react';
+import { X, Power, Trash2, Mail, Download, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../../store';
+import { organizationsAPI } from '../../../services/api';
+import toast from 'react-hot-toast';
 
 interface BulkOperationsProps {
   selectedOrgs: string[];
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export default function BulkOperations({ selectedOrgs, onClose }: BulkOperationsProps) {
+export default function BulkOperations({ selectedOrgs, onClose, onSuccess }: BulkOperationsProps) {
   const { organizations } = useAppStore();
   const [isProcessing, setIsProcessing] = useState(false);
   const [action, setAction] = useState<'activate' | 'deactivate' | 'delete' | 'email' | 'export' | null>(null);
 
   const selectedOrgsList = organizations.filter(org => selectedOrgs.includes(org.id));
 
-  const handleBulkAction = async (actionType: typeof action) => {
-    setAction(actionType);
-    
-    if (actionType === 'delete') {
-      const hasSubmissions = selectedOrgsList.some(org => org.totalSubmissions > 0);
-      if (hasSubmissions) {
-        alert('Cannot delete organizations with existing submissions');
-        return;
-      }
-    }
-
-    if (!window.confirm(`Are you sure you want to ${actionType} ${selectedOrgs.length} organization(s)?`)) {
-      setAction(null);
+  // 🔥 REAL API BULK ACTIVATE
+  const handleActivate = async () => {
+    if (!window.confirm(`Are you sure you want to activate ${selectedOrgs.length} organization(s)?`)) {
       return;
     }
 
+    setAction('activate');
     setIsProcessing(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const response = await organizationsAPI.bulkUpdate(selectedOrgs, { isActive: true });
 
-    console.log(`Bulk ${actionType}:`, selectedOrgs);
-
-    setIsProcessing(false);
-    alert(`Successfully ${actionType}d ${selectedOrgs.length} organization(s)!`);
-    onClose();
+      if (response.data.success) {
+        toast.success(`${selectedOrgs.length} organization(s) activated successfully!`);
+        onSuccess?.();
+        onClose();
+      }
+    } catch (error: any) {
+      console.error('Bulk activate error:', error);
+      toast.error(error.response?.data?.message || 'Failed to activate organizations');
+    } finally {
+      setIsProcessing(false);
+      setAction(null);
+    }
   };
 
+  // 🔥 REAL API BULK DEACTIVATE
+  const handleDeactivate = async () => {
+    if (!window.confirm(`Are you sure you want to deactivate ${selectedOrgs.length} organization(s)?`)) {
+      return;
+    }
+
+    setAction('deactivate');
+    setIsProcessing(true);
+
+    try {
+      const response = await organizationsAPI.bulkUpdate(selectedOrgs, { isActive: false });
+
+      if (response.data.success) {
+        toast.success(`${selectedOrgs.length} organization(s) deactivated successfully!`);
+        onSuccess?.();
+        onClose();
+      }
+    } catch (error: any) {
+      console.error('Bulk deactivate error:', error);
+      toast.error(error.response?.data?.message || 'Failed to deactivate organizations');
+    } finally {
+      setIsProcessing(false);
+      setAction(null);
+    }
+  };
+
+  // 🔥 REAL API BULK DELETE
+  const handleDelete = async () => {
+    const hasSubmissions = selectedOrgsList.some(org => org.totalSubmissions > 0);
+    
+    if (hasSubmissions) {
+      toast.error('Cannot delete organizations with existing submissions');
+      return;
+    }
+
+    if (!window.confirm(`⚠️ Are you sure you want to DELETE ${selectedOrgs.length} organization(s)? This action CANNOT be undone!`)) {
+      return;
+    }
+
+    setAction('delete');
+    setIsProcessing(true);
+
+    try {
+      const response = await organizationsAPI.bulkDelete(selectedOrgs);
+
+      if (response.data.success) {
+        toast.success(`${selectedOrgs.length} organization(s) deleted successfully!`);
+        onSuccess?.();
+        onClose();
+      }
+    } catch (error: any) {
+      console.error('Bulk delete error:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete organizations');
+    } finally {
+      setIsProcessing(false);
+      setAction(null);
+    }
+  };
+
+  // Export as CSV
   const handleExport = () => {
     const exportData = selectedOrgsList.map(org => ({
       Code: org.code,
@@ -57,7 +118,7 @@ export default function BulkOperations({ selectedOrgs, onClose }: BulkOperations
 
     const csv = [
       Object.keys(exportData[0]).join(','),
-      ...exportData.map(row => Object.values(row).join(','))
+      ...exportData.map(row => Object.values(row).map(val => `"${val}"`).join(','))
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -66,13 +127,15 @@ export default function BulkOperations({ selectedOrgs, onClose }: BulkOperations
     a.href = url;
     a.download = `selected_organizations_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
 
-    alert('Organizations exported successfully!');
+    toast.success('Organizations exported successfully!');
   };
 
+  // Send Email
   const handleSendEmail = () => {
     const emails = selectedOrgsList.map(org => org.email).join(', ');
-    alert(`Email would be sent to: ${emails}`);
+    toast.success(`Email composer would open with: ${emails}`);
     // In production, this would open an email composer or trigger backend email
   };
 
@@ -88,7 +151,8 @@ export default function BulkOperations({ selectedOrgs, onClose }: BulkOperations
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              disabled={isProcessing}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50"
             >
               <X className="w-6 h-6" />
             </button>
@@ -118,7 +182,7 @@ export default function BulkOperations({ selectedOrgs, onClose }: BulkOperations
 
           {/* Activate */}
           <button
-            onClick={() => handleBulkAction('activate')}
+            onClick={handleActivate}
             disabled={isProcessing}
             className="w-full flex items-center justify-between p-4 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -138,7 +202,7 @@ export default function BulkOperations({ selectedOrgs, onClose }: BulkOperations
 
           {/* Deactivate */}
           <button
-            onClick={() => handleBulkAction('deactivate')}
+            onClick={handleDeactivate}
             disabled={isProcessing}
             className="w-full flex items-center justify-between p-4 border-2 border-gray-200 rounded-lg hover:border-red-500 hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -192,7 +256,7 @@ export default function BulkOperations({ selectedOrgs, onClose }: BulkOperations
 
           {/* Delete */}
           <button
-            onClick={() => handleBulkAction('delete')}
+            onClick={handleDelete}
             disabled={isProcessing || selectedOrgsList.some(org => org.totalSubmissions > 0)}
             className="w-full flex items-center justify-between p-4 border-2 border-red-200 rounded-lg hover:border-red-600 hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -220,7 +284,8 @@ export default function BulkOperations({ selectedOrgs, onClose }: BulkOperations
         <div className="p-6 bg-gray-50 border-t border-gray-200 rounded-b-2xl">
           <button
             onClick={onClose}
-            className="w-full px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-white transition-colors"
+            disabled={isProcessing}
+            className="w-full px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-white transition-colors disabled:opacity-50"
           >
             Close
           </button>

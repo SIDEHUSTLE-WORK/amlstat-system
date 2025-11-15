@@ -1,3 +1,4 @@
+// frontend/src/pages/organization/BulkUpload.tsx
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/common/DashboardLayout';
@@ -11,12 +12,12 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { submissionsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import type { IndicatorData } from '../../types';
 
 export default function BulkUpload() {
   const navigate = useNavigate();
-  const { currentUser, addSubmission } = useAppStore();
+  const { currentUser, fetchSubmissionsByOrg } = useAppStore();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -68,73 +69,163 @@ export default function BulkUpload() {
     }
 
     setSelectedFile(file);
+    setUploadResult(null); // Clear previous results
   };
 
+  // 🔥 REAL API UPLOAD
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !currentUser?.organizationId) {
+      toast.error('Please select a file and ensure you are logged in');
+      return;
+    }
 
     setUploading(true);
     setUploadProgress(0);
 
-    // Simulate upload with validation
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 200);
-
-    // Simulate processing
-    setTimeout(() => {
-      // Create mock indicators from "file"
-      const mockIndicators: IndicatorData[] = [
-        { section: 'A', number: '1.1', description: 'Total STRs received', value: 245, required: true },
-        { section: 'A', number: '1.2', description: 'STRs from banks', value: 120, required: true },
-        { section: 'A', number: '1.3', description: 'STRs from mobile money', value: 98, required: true },
-        { section: 'B', number: '2.1', description: 'Total reporting entities', value: 47, required: true },
-        { section: 'C', number: '3.1', description: 'Inspections conducted', value: 12, required: true },
-      ];
-
-      // Add submission
-      addSubmission({
-        id: `sub-${Date.now()}`,
-        organizationId: currentUser!.organizationId!,
-        organization: currentUser!.organization,
-        month: 12,
-        year: 2024,
-        status: 'submitted',
-        indicators: mockIndicators,
-        totalIndicators: mockIndicators.length,
-        filledIndicators: mockIndicators.length,
-        completionRate: 100,
-        submittedBy: currentUser!.name,
-        submittedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      setUploadResult({
-        success: true,
-        totalRecords: mockIndicators.length,
-        successfulRecords: mockIndicators.length,
-        failedRecords: 0,
-      });
-
-      setUploading(false);
-      toast.success('File uploaded and statistics submitted successfully!');
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('organizationId', currentUser.organizationId);
       
-      // Navigate back after 2 seconds
-      setTimeout(() => {
-        navigate('/organization/dashboard');
-      }, 2000);
-    }, 2500);
+      const now = new Date();
+      formData.append('month', String(now.getMonth() + 1));
+      formData.append('year', String(now.getFullYear()));
+
+      // Simulate progress during upload
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      // 🔥 Call bulk upload API
+      const response = await submissionsAPI.bulkUpload(formData);
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      if (response.data.success) {
+        const { submission, validation } = response.data.data;
+
+        // Auto-submit if validation is successful
+        if (validation.isValid && submission.id) {
+          try {
+            await submissionsAPI.submit(submission.id);
+            
+            setUploadResult({
+              success: true,
+              totalRecords: validation.totalIndicators || 0,
+              successfulRecords: validation.validIndicators || 0,
+              failedRecords: validation.invalidIndicators || 0,
+              submitted: true,
+            });
+
+            toast.success('File uploaded and statistics submitted successfully!');
+          } catch (submitError) {
+            // If submission fails, still show upload success
+            setUploadResult({
+              success: true,
+              totalRecords: validation.totalIndicators || 0,
+              successfulRecords: validation.validIndicators || 0,
+              failedRecords: validation.invalidIndicators || 0,
+              submitted: false,
+            });
+
+            toast.success('File uploaded! Please submit from dashboard.');
+          }
+        } else {
+          setUploadResult({
+            success: true,
+            totalRecords: validation.totalIndicators || 0,
+            successfulRecords: validation.validIndicators || 0,
+            failedRecords: validation.invalidIndicators || 0,
+            submitted: false,
+            errors: validation.errors || [],
+          });
+
+          if (validation.invalidIndicators > 0) {
+            toast(`⚠️ File uploaded with ${validation.invalidIndicators} validation errors`, {
+              icon: '⚠️',
+            });
+          } else {
+            toast.success('File uploaded successfully!');
+          }
+        }
+
+        // Refresh submissions
+        await fetchSubmissionsByOrg(currentUser.organizationId);
+
+        // Navigate back after delay
+        setTimeout(() => {
+          navigate('/organization/dashboard');
+        }, 3000);
+      }
+    } catch (error: any) {
+      console.error('❌ Upload error:', error);
+      
+      setUploadResult({
+        success: false,
+        error: error.response?.data?.message || 'Failed to upload file',
+      });
+
+      toast.error(error.response?.data?.message || 'Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const downloadTemplate = () => {
-    toast.success('Template download started!');
+    // Create a simple CSV template
+    const now = new Date();
+    const template = `Section,Number,Description,Value
+A,1.1,Total number of STRs received during the month,
+A,1.2,Number of STRs from banks,
+A,1.3,Number of STRs from mobile money operators,
+A,1.4,Number of STRs from microfinance institutions,
+A,1.5,Number of STRs from forex bureaus,
+A,1.6,Total value of STRs (UGX),
+A,1.7,Number of STRs forwarded to law enforcement,
+A,1.8,Number of STRs under analysis,
+B,2.1,Total number of registered reporting entities,
+B,2.2,Number of banks,
+B,2.3,Number of mobile money operators,
+B,2.4,Number of microfinance institutions,
+B,2.5,Number of forex bureaus,
+B,2.6,Number of insurance companies,
+B,2.7,Number of SACCOs,
+B,2.8,Number of designated non-financial businesses,
+C,3.1,Number of on-site inspections conducted,
+C,3.2,Number of off-site reviews conducted,
+C,3.3,Number of enforcement actions taken,
+C,3.4,Total value of fines imposed (UGX),
+C,3.5,Number of licenses suspended,
+C,3.6,Number of licenses revoked,
+D,4.1,Number of international requests received,
+D,4.2,Number of international requests sent,
+D,4.3,Number of requests from INTERPOL,
+D,4.4,Number of requests from ESAAMLG,
+E,5.1,Number of training sessions conducted,
+E,5.2,Number of participants trained,
+E,5.3,Number of reporting entities trained,
+F,6.1,Number of cases under investigation,
+F,6.2,Number of cases forwarded to DPP,
+F,6.3,Number of convictions,
+F,6.4,Total value of assets frozen (UGX),
+F,6.5,Total value of assets seized (UGX),`;
+
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `FIA-Statistics-Template-${currentUser?.organization?.code}-${now.toISOString().slice(0, 7)}.csv`;
+    link.click();
+    
+    toast.success('Template downloaded successfully!');
   };
 
   return (
@@ -170,7 +261,7 @@ export default function BulkUpload() {
             Upload Instructions
           </h3>
           <ul className="space-y-2 text-sm text-blue-800">
-            <li>• <strong>Download the template</strong> specific to December 2024</li>
+            <li>• <strong>Download the template</strong> specific to {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</li>
             <li>• <strong>Fill in all required indicators</strong> following the exact format</li>
             <li>• <strong>Supported formats:</strong> CSV (.csv), Excel (.xls, .xlsx)</li>
             <li>• <strong>Maximum file size:</strong> 10 MB</li>
@@ -209,6 +300,7 @@ export default function BulkUpload() {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="btn-primary"
+                  disabled={uploading}
                 >
                   Select File
                 </button>
@@ -221,11 +313,18 @@ export default function BulkUpload() {
                   <p className="text-gray-600">{(selectedFile.size / 1024).toFixed(2)} KB</p>
                 </div>
                 <div className="flex space-x-3 justify-center">
-                  <button onClick={handleUpload} className="btn-primary" disabled={uploading}>
+                  <button 
+                    onClick={handleUpload} 
+                    className="btn-primary" 
+                    disabled={uploading}
+                  >
                     {uploading ? 'Uploading...' : 'Upload & Submit'}
                   </button>
                   <button
-                    onClick={() => setSelectedFile(null)}
+                    onClick={() => {
+                      setSelectedFile(null);
+                      setUploadResult(null);
+                    }}
                     className="btn-outline"
                     disabled={uploading}
                   >
@@ -253,13 +352,17 @@ export default function BulkUpload() {
           )}
 
           {/* Upload Result */}
-          {uploadResult && (
+          {uploadResult && uploadResult.success && (
             <div className="mt-6 p-6 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex items-center space-x-3 mb-4">
                 <CheckCircle className="w-8 h-8 text-green-600" />
                 <div>
                   <h3 className="text-lg font-bold text-green-900">Upload Successful!</h3>
-                  <p className="text-green-700">Your statistics have been submitted to FIA</p>
+                  <p className="text-green-700">
+                    {uploadResult.submitted 
+                      ? 'Your statistics have been submitted to FIA'
+                      : 'File uploaded - review and submit from dashboard'}
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4 text-center">
@@ -274,6 +377,33 @@ export default function BulkUpload() {
                 <div className="bg-white p-3 rounded-lg">
                   <div className="text-2xl font-bold text-red-600">{uploadResult.failedRecords}</div>
                   <div className="text-sm text-gray-600">Failed</div>
+                </div>
+              </div>
+              
+              {uploadResult.errors && uploadResult.errors.length > 0 && (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <h4 className="font-semibold text-yellow-900 mb-2">Validation Errors:</h4>
+                  <ul className="text-sm text-yellow-800 space-y-1">
+                    {uploadResult.errors.slice(0, 5).map((error: string, idx: number) => (
+                      <li key={idx}>• {error}</li>
+                    ))}
+                    {uploadResult.errors.length > 5 && (
+                      <li className="font-semibold">...and {uploadResult.errors.length - 5} more errors</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Upload Error */}
+          {uploadResult && !uploadResult.success && (
+            <div className="mt-6 p-6 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <XCircle className="w-8 h-8 text-red-600" />
+                <div>
+                  <h3 className="text-lg font-bold text-red-900">Upload Failed</h3>
+                  <p className="text-red-700">{uploadResult.error}</p>
                 </div>
               </div>
             </div>

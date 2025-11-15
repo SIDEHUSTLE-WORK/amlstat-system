@@ -1,5 +1,5 @@
-// src/pages/admin/AdminSettings.tsx
-import { useState } from 'react';
+// frontend/src/pages/admin/AdminSettings.tsx
+import { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/common/DashboardLayout';
 import { 
   Settings as SettingsIcon, 
@@ -28,6 +28,7 @@ import {
   Filter
 } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { authAPI, adminAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
 type AuditLog = {
@@ -76,109 +77,130 @@ export default function AdminSettings() {
     autoBackup: true,
   });
 
-  // Mock Audit Logs
-  const [auditLogs] = useState<AuditLog[]>([
-    {
-      id: '1',
-      timestamp: new Date('2024-12-13T10:30:00'),
-      user: 'Admin User',
-      action: 'User Login',
-      details: 'Successful admin login',
-      ipAddress: '192.168.1.100',
-      status: 'success'
-    },
-    {
-      id: '2',
-      timestamp: new Date('2024-12-13T09:15:00'),
-      user: 'Admin User',
-      action: 'Organization Created',
-      details: 'Created new organization: Bank of Uganda',
-      ipAddress: '192.168.1.100',
-      status: 'success'
-    },
-    {
-      id: '3',
-      timestamp: new Date('2024-12-13T08:45:00'),
-      user: 'System',
-      action: 'Auto Backup',
-      details: 'Database backup completed successfully',
-      ipAddress: 'System',
-      status: 'success'
-    },
-    {
-      id: '4',
-      timestamp: new Date('2024-12-12T16:20:00'),
-      user: 'Admin User',
-      action: 'Failed Login Attempt',
-      details: 'Invalid password attempt',
-      ipAddress: '192.168.1.105',
-      status: 'failed'
-    },
-    {
-      id: '5',
-      timestamp: new Date('2024-12-12T14:10:00'),
-      user: 'Admin User',
-      action: 'Submission Approved',
-      details: 'Approved December 2024 submission for FIA',
-      ipAddress: '192.168.1.100',
-      status: 'success'
-    },
-  ]);
+  // Audit Logs
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [systemStats, setSystemStats] = useState({
+    serverStatus: 'online',
+    databaseStatus: 'connected',
+    lastBackup: '2 hours ago',
+    storageUsed: 45,
+    activeUsers: 12,
+    totalUsers: 45
+  });
 
-  // Export Data Handler
+  // 🔥 LOAD AUDIT LOGS FROM API
+  useEffect(() => {
+    const loadAuditLogs = async () => {
+      try {
+        const response = await adminAPI.getAuditLogs({ limit: 50 });
+        if (response.data.success) {
+          const logs = response.data.data.map((log: any) => ({
+            id: log.id,
+            timestamp: new Date(log.createdAt),
+            user: log.userName || 'System',
+            action: log.action,
+            details: log.details,
+            ipAddress: log.ipAddress || 'N/A',
+            status: log.success ? 'success' : 'failed'
+          }));
+          setAuditLogs(logs);
+        }
+      } catch (error) {
+        console.error('Failed to load audit logs:', error);
+      }
+    };
+
+    if (showAuditLogs) {
+      loadAuditLogs();
+    }
+  }, [showAuditLogs]);
+
+  // 🔥 LOAD SYSTEM STATS
+  useEffect(() => {
+    const loadSystemStats = async () => {
+      try {
+        const response = await adminAPI.getSystemStats();
+        if (response.data.success) {
+          const stats = response.data.data;
+          setSystemStats({
+            serverStatus: stats.serverStatus || 'online',
+            databaseStatus: stats.databaseStatus || 'connected',
+            lastBackup: stats.lastBackup || 'N/A',
+            storageUsed: stats.storageUsed || 45,
+            activeUsers: stats.activeUsers || 0,
+            totalUsers: stats.totalUsers || 0
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load system stats:', error);
+      }
+    };
+
+    loadSystemStats();
+  }, []);
+
+  // 🔥 EXPORT DATA HANDLER WITH REAL API
   const handleExportData = async (type: 'json' | 'csv' | 'excel') => {
     setLoading(true);
     toast.loading('Preparing export...');
     
     try {
-      // Simulate export preparation
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const response = await adminAPI.exportData({ 
+        format: type,
+        type: 'organizations' 
+      });
       
-      // In real app, this would call API
-      const data = {
-        organizations: 17,
-        submissions: 204,
-        users: 45,
-        exportDate: new Date().toISOString(),
-        exportedBy: currentUser?.name,
-      };
-      
-      const dataStr = JSON.stringify(data, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(dataBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `fia-system-export-${new Date().toISOString().split('T')[0]}.${type}`;
-      link.click();
-      
+      if (response.data.success) {
+        // Create blob and download
+        const blob = new Blob([JSON.stringify(response.data.data, null, 2)], { 
+          type: type === 'json' ? 'application/json' : 'text/csv' 
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `fia-system-export-${new Date().toISOString().split('T')[0]}.${type}`;
+        link.click();
+        
+        toast.dismiss();
+        toast.success(`Data exported successfully as ${type.toUpperCase()}!`);
+      }
+    } catch (error: any) {
+      console.error('Export error:', error);
       toast.dismiss();
-      toast.success(`Data exported successfully as ${type.toUpperCase()}!`);
-    } catch (error) {
-      toast.dismiss();
-      toast.error('Failed to export data');
+      toast.error(error.response?.data?.message || 'Failed to export data');
     } finally {
       setLoading(false);
     }
   };
 
-  // Backup Handler
+  // 🔥 BACKUP HANDLER WITH REAL API
   const handleBackup = async () => {
     setLoading(true);
     toast.loading('Creating system backup...');
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      const response = await adminAPI.createBackup();
+      
+      if (response.data.success) {
+        toast.dismiss();
+        toast.success('System backup created successfully!');
+        
+        // Update last backup time
+        setSystemStats(prev => ({
+          ...prev,
+          lastBackup: 'Just now'
+        }));
+      }
+    } catch (error: any) {
+      console.error('Backup error:', error);
       toast.dismiss();
-      toast.success('System backup created successfully!');
-    } catch (error) {
-      toast.dismiss();
-      toast.error('Backup failed');
+      toast.error(error.response?.data?.message || 'Backup failed');
     } finally {
       setLoading(false);
     }
   };
 
-  // Password Update
+  // 🔥 PASSWORD UPDATE WITH REAL API
   const handlePasswordUpdate = async () => {
     if (passwordData.new !== passwordData.confirm) {
       toast.error('Passwords do not match!');
@@ -192,28 +214,65 @@ export default function AdminSettings() {
 
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.success('Password updated successfully!');
-      setPasswordData({ current: '', new: '', confirm: '' });
-    } catch (error) {
-      toast.error('Failed to update password');
+      const response = await authAPI.changePassword(
+        passwordData.current,
+        passwordData.new
+      );
+
+      if (response.data.success) {
+        toast.success('Password updated successfully!');
+        setPasswordData({ current: '', new: '', confirm: '' });
+      }
+    } catch (error: any) {
+      console.error('Password update error:', error);
+      toast.error(error.response?.data?.message || 'Failed to update password');
     } finally {
       setLoading(false);
     }
   };
 
-  // Profile Save
+  // 🔥 PROFILE SAVE WITH REAL API
   const handleProfileSave = async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.success('Profile updated successfully!');
-    } catch (error) {
-      toast.error('Failed to update profile');
+      const response = await authAPI.updateProfile({
+        name: profileData.name,
+        email: profileData.email,
+      });
+
+      if (response.data.success) {
+        toast.success('Profile updated successfully!');
+      }
+    } catch (error: any) {
+      console.error('Profile update error:', error);
+      toast.error(error.response?.data?.message || 'Failed to update profile');
     } finally {
       setLoading(false);
     }
   };
+
+  // 🔥 NOTIFICATION PREFERENCES
+  const handleNotificationsSave = async () => {
+    setLoading(true);
+    try {
+      // Save to localStorage for now
+      localStorage.setItem('adminNotificationPrefs', JSON.stringify(notifications));
+      toast.success('Notification preferences saved!');
+    } catch (error) {
+      console.error('Notifications save error:', error);
+      toast.error('Failed to save preferences');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load notification preferences
+  useEffect(() => {
+    const saved = localStorage.getItem('adminNotificationPrefs');
+    if (saved) {
+      setNotifications(JSON.parse(saved));
+    }
+  }, []);
 
   // Filter audit logs
   const filteredAuditLogs = auditLogs.filter(log => 
@@ -232,9 +291,17 @@ export default function AdminSettings() {
             <p className="text-gray-600">Manage system settings and configurations</p>
           </div>
           <div className="flex items-center space-x-2">
-            <span className="px-4 py-2 bg-green-100 text-green-800 rounded-lg font-semibold flex items-center space-x-2">
-              <CheckCircle className="w-5 h-5" />
-              <span>System Healthy</span>
+            <span className={`px-4 py-2 rounded-lg font-semibold flex items-center space-x-2 ${
+              systemStats.serverStatus === 'online' 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-red-100 text-red-800'
+            }`}>
+              {systemStats.serverStatus === 'online' ? (
+                <CheckCircle className="w-5 h-5" />
+              ) : (
+                <AlertCircle className="w-5 h-5" />
+              )}
+              <span>System {systemStats.serverStatus === 'online' ? 'Healthy' : 'Down'}</span>
             </span>
           </div>
         </div>
@@ -245,7 +312,7 @@ export default function AdminSettings() {
             <button
               onClick={() => handleExportData('json')}
               disabled={loading}
-              className="flex flex-col items-center space-y-2 p-4 bg-white/20 hover:bg-white/30 rounded-lg transition-all transform hover:scale-105"
+              className="flex flex-col items-center space-y-2 p-4 bg-white/20 hover:bg-white/30 rounded-lg transition-all transform hover:scale-105 disabled:opacity-50"
             >
               <Download className="w-8 h-8" />
               <span className="font-semibold">Export Data</span>
@@ -262,7 +329,7 @@ export default function AdminSettings() {
             <button
               onClick={handleBackup}
               disabled={loading}
-              className="flex flex-col items-center space-y-2 p-4 bg-white/20 hover:bg-white/30 rounded-lg transition-all transform hover:scale-105"
+              className="flex flex-col items-center space-y-2 p-4 bg-white/20 hover:bg-white/30 rounded-lg transition-all transform hover:scale-105 disabled:opacity-50"
             >
               <HardDrive className="w-8 h-8" />
               <span className="font-semibold">Backup Now</span>
@@ -299,6 +366,7 @@ export default function AdminSettings() {
                   onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
                   className="input-field"
                   placeholder="Admin Name"
+                  disabled={loading}
                 />
               </div>
 
@@ -310,13 +378,14 @@ export default function AdminSettings() {
                   onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
                   className="input-field"
                   placeholder="admin@fia.ug"
+                  disabled={loading}
                 />
               </div>
 
               <button 
                 onClick={handleProfileSave}
                 disabled={loading}
-                className="btn-primary w-full"
+                className="btn-primary w-full disabled:opacity-50"
               >
                 {loading ? 'Saving...' : 'Save Changes'}
               </button>
@@ -372,6 +441,14 @@ export default function AdminSettings() {
                   className="w-5 h-5 rounded text-fia-teal focus:ring-fia-teal" 
                 />
               </label>
+
+              <button 
+                onClick={handleNotificationsSave}
+                disabled={loading}
+                className="btn-primary w-full disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Save Preferences'}
+              </button>
             </div>
           </div>
 
@@ -393,6 +470,7 @@ export default function AdminSettings() {
                   onChange={(e) => setPasswordData({ ...passwordData, current: e.target.value })}
                   className="input-field"
                   placeholder="••••••••"
+                  disabled={loading}
                 />
               </div>
 
@@ -404,6 +482,7 @@ export default function AdminSettings() {
                   onChange={(e) => setPasswordData({ ...passwordData, new: e.target.value })}
                   className="input-field"
                   placeholder="••••••••"
+                  disabled={loading}
                 />
               </div>
 
@@ -415,13 +494,14 @@ export default function AdminSettings() {
                   onChange={(e) => setPasswordData({ ...passwordData, confirm: e.target.value })}
                   className="input-field"
                   placeholder="••••••••"
+                  disabled={loading}
                 />
               </div>
 
               <button 
                 onClick={handlePasswordUpdate}
                 disabled={loading || !passwordData.current || !passwordData.new}
-                className="btn-primary w-full"
+                className="btn-primary w-full disabled:opacity-50"
               >
                 {loading ? 'Updating...' : 'Update Password'}
               </button>
@@ -444,6 +524,7 @@ export default function AdminSettings() {
                   value={systemPrefs.timezone}
                   onChange={(e) => setSystemPrefs({ ...systemPrefs, timezone: e.target.value })}
                   className="input-field"
+                  disabled={loading}
                 >
                   <option value="EAT">East Africa Time (EAT)</option>
                   <option value="UTC">UTC</option>
@@ -457,6 +538,7 @@ export default function AdminSettings() {
                   value={systemPrefs.dateFormat}
                   onChange={(e) => setSystemPrefs({ ...systemPrefs, dateFormat: e.target.value })}
                   className="input-field"
+                  disabled={loading}
                 >
                   <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                   <option value="MM/DD/YYYY">MM/DD/YYYY</option>
@@ -476,7 +558,8 @@ export default function AdminSettings() {
                     setSystemPrefs({ ...systemPrefs, maintenanceMode: e.target.checked });
                     toast(e.target.checked ? '⚠️ Maintenance mode enabled' : '✅ Maintenance mode disabled');
                   }}
-                  className="w-5 h-5 rounded text-red-500 focus:ring-red-500" 
+                  className="w-5 h-5 rounded text-red-500 focus:ring-red-500"
+                  disabled={loading}
                 />
               </label>
 
@@ -489,7 +572,8 @@ export default function AdminSettings() {
                   type="checkbox" 
                   checked={systemPrefs.autoBackup}
                   onChange={(e) => setSystemPrefs({ ...systemPrefs, autoBackup: e.target.checked })}
-                  className="w-5 h-5 rounded text-fia-teal focus:ring-fia-teal" 
+                  className="w-5 h-5 rounded text-fia-teal focus:ring-fia-teal"
+                  disabled={loading}
                 />
               </label>
             </div>
@@ -512,6 +596,7 @@ export default function AdminSettings() {
                   defaultValue="smtp.fia.ug"
                   className="input-field"
                   placeholder="smtp.example.com"
+                  disabled={loading}
                 />
               </div>
 
@@ -522,10 +607,11 @@ export default function AdminSettings() {
                   defaultValue="587"
                   className="input-field"
                   placeholder="587"
+                  disabled={loading}
                 />
               </div>
 
-              <button className="btn-secondary w-full">
+              <button className="btn-secondary w-full" disabled={loading}>
                 Test Email Configuration
               </button>
             </div>
@@ -544,7 +630,7 @@ export default function AdminSettings() {
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div>
                   <p className="font-medium text-gray-700">Total Users</p>
-                  <p className="text-2xl font-bold text-fia-navy">45</p>
+                  <p className="text-2xl font-bold text-fia-navy">{systemStats.totalUsers}</p>
                 </div>
                 <Users className="w-8 h-8 text-gray-400" />
               </div>
@@ -552,7 +638,7 @@ export default function AdminSettings() {
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div>
                   <p className="font-medium text-gray-700">Active Sessions</p>
-                  <p className="text-2xl font-bold text-green-600">12</p>
+                  <p className="text-2xl font-bold text-green-600">{systemStats.activeUsers}</p>
                 </div>
                 <Zap className="w-8 h-8 text-gray-400" />
               </div>
@@ -569,12 +655,22 @@ export default function AdminSettings() {
         <div className="bg-white rounded-xl p-6 shadow-lg">
           <h3 className="text-xl font-bold text-gray-900 mb-6">System Status</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-green-50 rounded-lg">
+            <div className={`p-4 rounded-lg ${
+              systemStats.serverStatus === 'online' ? 'bg-green-50' : 'bg-red-50'
+            }`}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-semibold text-gray-700">Server Status</span>
-                <CheckCircle className="w-5 h-5 text-green-500" />
+                {systemStats.serverStatus === 'online' ? (
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                )}
               </div>
-              <p className="text-2xl font-bold text-green-600">Online</p>
+              <p className={`text-2xl font-bold ${
+                systemStats.serverStatus === 'online' ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {systemStats.serverStatus === 'online' ? 'Online' : 'Offline'}
+              </p>
             </div>
 
             <div className="p-4 bg-blue-50 rounded-lg">
@@ -582,7 +678,7 @@ export default function AdminSettings() {
                 <span className="text-sm font-semibold text-gray-700">Database</span>
                 <CheckCircle className="w-5 h-5 text-blue-500" />
               </div>
-              <p className="text-2xl font-bold text-blue-600">Connected</p>
+              <p className="text-2xl font-bold text-blue-600 capitalize">{systemStats.databaseStatus}</p>
             </div>
 
             <div className="p-4 bg-purple-50 rounded-lg">
@@ -590,7 +686,7 @@ export default function AdminSettings() {
                 <span className="text-sm font-semibold text-gray-700">Last Backup</span>
                 <Clock className="w-5 h-5 text-purple-500" />
               </div>
-              <p className="text-lg font-bold text-purple-600">2 hours ago</p>
+              <p className="text-lg font-bold text-purple-600">{systemStats.lastBackup}</p>
             </div>
 
             <div className="p-4 bg-orange-50 rounded-lg">
@@ -598,7 +694,7 @@ export default function AdminSettings() {
                 <span className="text-sm font-semibold text-gray-700">Storage Used</span>
                 <HardDrive className="w-5 h-5 text-orange-500" />
               </div>
-              <p className="text-2xl font-bold text-orange-600">45%</p>
+              <p className="text-2xl font-bold text-orange-600">{systemStats.storageUsed}%</p>
             </div>
           </div>
         </div>
@@ -644,48 +740,55 @@ export default function AdminSettings() {
 
               {/* Logs Table */}
               <div className="overflow-y-auto" style={{ maxHeight: '60vh' }}>
-                <table className="w-full">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Timestamp</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">User</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Action</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Details</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">IP Address</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredAuditLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {log.timestamp.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {log.user}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {log.action}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {log.details}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {log.ipAddress}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                            log.status === 'success' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {log.status}
-                          </span>
-                        </td>
+                {filteredAuditLogs.length > 0 ? (
+                  <table className="w-full">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Timestamp</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">User</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Action</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Details</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">IP Address</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {filteredAuditLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {log.timestamp.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {log.user}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {log.action}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {log.details}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {log.ipAddress}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                              log.status === 'success' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {log.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-center py-12">
+                    <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-600">No audit logs found</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

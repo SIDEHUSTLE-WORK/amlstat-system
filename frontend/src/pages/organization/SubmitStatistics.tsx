@@ -1,4 +1,4 @@
-// src/pages/organization/SubmitStatistics.tsx
+// frontend/src/pages/organization/SubmitStatistics.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/common/DashboardLayout';
@@ -14,15 +14,18 @@ import {
   Download
 } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { submissionsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import type { IndicatorData } from '../../types';
 
 export default function SubmitStatistics() {
   const navigate = useNavigate();
-  const { currentUser, addSubmission } = useAppStore();
+  const { currentUser, fetchSubmissionsByOrg } = useAppStore();
   const [currentSection, setCurrentSection] = useState(0);
   const [indicators, setIndicators] = useState<IndicatorData[]>(getInitialIndicators());
   const [showPreview, setShowPreview] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
 
   // Format number with commas
   const formatNumber = (value: string): string => {
@@ -43,14 +46,19 @@ export default function SubmitStatistics() {
   };
 
   // Parse number (remove commas for storage)
-  const parseNumber = (value: string): string => {
+  const parseNumber = (value: string | number): string => {
+    // If it's already a number, convert to string first
+    if (typeof value === 'number') {
+      return value.toString();
+    }
+    // Remove commas from string
     return value.replace(/,/g, '');
   };
 
-  // Get initial indicators (1,061 total - we'll show them in sections)
+  // Get initial indicators
   function getInitialIndicators(): IndicatorData[] {
     return [
-      // Section A: STRs and SARs (Suspicious Transaction/Activity Reports)
+      // Section A: STRs and SARs
       { section: 'A', number: '1.1', description: 'Total number of STRs received during the month', value: '', required: true },
       { section: 'A', number: '1.2', description: 'Number of STRs from banks', value: '', required: true },
       { section: 'A', number: '1.3', description: 'Number of STRs from mobile money operators', value: '', required: true },
@@ -130,34 +138,50 @@ export default function SubmitStatistics() {
     return Math.round((filled / indicators.length) * 100);
   };
 
-  const handleSaveDraft = () => {
-    const filled = indicators.filter(i => i.value !== '').length;
+  // 🔥 SAVE DRAFT WITH REAL API
+  const handleSaveDraft = async () => {
+    if (!currentUser?.organizationId) {
+      toast.error('Organization not found');
+      return;
+    }
+
+    setIsSavingDraft(true);
     
-    // Parse values before saving
-const parsedIndicators = indicators.map(ind => ({
-  ...ind,
-  // @ts-ignore - value exists and parseNumber handles it
-  value: parseNumber(ind.value)
-}));
-    
-    addSubmission({
-      id: `sub-${Date.now()}`,
-      organizationId: currentUser!.organizationId!,
-      organization: currentUser!.organization,
-      month: 12,
-      year: 2024,
-      status: 'draft',
-      indicators: parsedIndicators,
-      totalIndicators: indicators.length,
-      filledIndicators: filled,
-      completionRate: Math.round((filled / indicators.length) * 100),
-      submittedBy: currentUser!.name,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    
-    toast.success('Draft saved successfully!');
-    navigate('/organization/dashboard');
+    try {
+      const filled = indicators.filter(i => i.value !== '').length;
+      
+      // Parse values before saving
+      const parsedIndicators = indicators.map(ind => ({
+        ...ind,
+        value: ind.value ? parseNumber(ind.value) : ''
+      }));
+
+      // Convert to object format for API
+      const indicatorsObject = parsedIndicators.reduce((acc, ind) => {
+        acc[ind.number] = ind.value;
+        return acc;
+      }, {} as Record<string, string>);
+      
+      const now = new Date();
+      const response = await submissionsAPI.create({
+        organizationId: currentUser.organizationId,
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+        indicators: indicatorsObject,
+      });
+
+      if (response.data.success) {
+        toast.success('Draft saved successfully!');
+        // Refresh submissions
+        await fetchSubmissionsByOrg(currentUser.organizationId);
+        navigate('/organization/dashboard');
+      }
+    } catch (error: any) {
+      console.error('Save draft error:', error);
+      toast.error(error.response?.data?.message || 'Failed to save draft');
+    } finally {
+      setIsSavingDraft(false);
+    }
   };
 
   const handlePreview = () => {
@@ -171,43 +195,72 @@ const parsedIndicators = indicators.map(ind => ({
     setShowPreview(true);
   };
 
-  const handleFinalSubmit = () => {
-    const filled = indicators.filter(i => i.value !== '').length;
+  // 🔥 FINAL SUBMIT WITH REAL API
+  const handleFinalSubmit = async () => {
+    if (!currentUser?.organizationId) {
+      toast.error('Organization not found');
+      return;
+    }
+
+    setIsSubmitting(true);
     
-    // Parse values before saving
-const parsedIndicators = indicators.map(ind => ({
-  ...ind,
-  // @ts-ignore - value exists and parseNumber handles it
-  value: parseNumber(ind.value)
-}));
-    
-    addSubmission({
-      id: `sub-${Date.now()}`,
-      organizationId: currentUser!.organizationId!,
-      organization: currentUser!.organization,
-      month: 12,
-      year: 2024,
-      status: 'submitted',
-      indicators: parsedIndicators,
-      totalIndicators: indicators.length,
-      filledIndicators: filled,
-      completionRate: 100,
-      submittedBy: currentUser!.name,
-      submittedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    
-    setShowPreview(false);
-    toast.success('Statistics submitted successfully to FIA!');
-    navigate('/organization/dashboard');
+    try {
+      const filled = indicators.filter(i => i.value !== '').length;
+      
+      // Parse values before saving
+      const parsedIndicators = indicators.map(ind => ({
+        ...ind,
+        value: ind.value ? parseNumber(ind.value) : ''
+      }));
+
+      // Convert to object format for API
+      const indicatorsObject = parsedIndicators.reduce((acc, ind) => {
+        acc[ind.number] = ind.value;
+        return acc;
+      }, {} as Record<string, string>);
+      
+      const now = new Date();
+      
+      // Create submission
+      const createResponse = await submissionsAPI.create({
+        organizationId: currentUser.organizationId,
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+        indicators: indicatorsObject,
+      });
+
+      if (createResponse.data.success) {
+        const submissionId = createResponse.data.data.submission.id;
+        
+        // Submit it immediately
+        const submitResponse = await submissionsAPI.submit(submissionId);
+        
+        if (submitResponse.data.success) {
+          setShowPreview(false);
+          toast.success('Statistics submitted successfully to FIA!');
+          
+          // Refresh submissions
+          await fetchSubmissionsByOrg(currentUser.organizationId);
+          
+          // Navigate after short delay
+          setTimeout(() => {
+            navigate('/organization/dashboard');
+          }, 1500);
+        }
+      }
+    } catch (error: any) {
+      console.error('Submit error:', error);
+      toast.error(error.response?.data?.message || 'Failed to submit statistics');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleExportPreview = () => {
     // Create a simple text export
     let exportText = `FIA Uganda - AML/CFT Statistics Submission\n`;
     exportText += `Organization: ${currentUser?.organization?.name}\n`;
-    exportText += `Month: December 2024\n`;
+    exportText += `Month: ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}\n`;
     exportText += `Submitted By: ${currentUser?.name}\n`;
     exportText += `Date: ${new Date().toLocaleDateString()}\n\n`;
     exportText += `${'='.repeat(80)}\n\n`;
@@ -229,7 +282,7 @@ const parsedIndicators = indicators.map(ind => ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `FIA-Statistics-${currentUser?.organization?.code}-Dec2024.txt`;
+    link.download = `FIA-Statistics-${currentUser?.organization?.code}-${new Date().toISOString().slice(0, 7)}.txt`;
     link.click();
     
     toast.success('Preview exported successfully!');
@@ -248,17 +301,20 @@ const parsedIndicators = indicators.map(ind => ({
               <ArrowLeft className="w-6 h-6 text-gray-600" />
             </button>
             <div>
-              <h1 className="text-3xl font-bold text-fia-navy">Submit December 2024 Statistics</h1>
+              <h1 className="text-3xl font-bold text-fia-navy">
+                Submit {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} Statistics
+              </h1>
               <p className="text-gray-600">{currentUser?.organization?.name}</p>
             </div>
           </div>
           <div className="flex space-x-3">
             <button
               onClick={handleSaveDraft}
-              className="btn-outline flex items-center space-x-2"
+              disabled={isSavingDraft}
+              className="btn-outline flex items-center space-x-2 disabled:opacity-50"
             >
               <Save className="w-5 h-5" />
-              <span>Save Draft</span>
+              <span>{isSavingDraft ? 'Saving...' : 'Save Draft'}</span>
             </button>
             <button
               onClick={handlePreview}
@@ -423,7 +479,8 @@ const parsedIndicators = indicators.map(ind => ({
                 </div>
                 <button
                   onClick={() => setShowPreview(false)}
-                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  disabled={isSubmitting}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -440,7 +497,9 @@ const parsedIndicators = indicators.map(ind => ({
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Reporting Period</p>
-                  <p className="font-bold text-gray-900">December 2024</p>
+                  <p className="font-bold text-gray-900">
+                    {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Submitted By</p>
@@ -488,7 +547,8 @@ const parsedIndicators = indicators.map(ind => ({
             <div className="p-6 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
               <button
                 onClick={handleExportPreview}
-                className="btn-outline flex items-center space-x-2"
+                disabled={isSubmitting}
+                className="btn-outline flex items-center space-x-2 disabled:opacity-50"
               >
                 <Download className="w-5 h-5" />
                 <span>Export Preview</span>
@@ -497,16 +557,18 @@ const parsedIndicators = indicators.map(ind => ({
               <div className="flex space-x-3">
                 <button
                   onClick={() => setShowPreview(false)}
-                  className="btn-outline"
+                  disabled={isSubmitting}
+                  className="btn-outline disabled:opacity-50"
                 >
                   Back to Edit
                 </button>
                 <button
                   onClick={handleFinalSubmit}
-                  className="btn-primary flex items-center space-x-2"
+                  disabled={isSubmitting}
+                  className="btn-primary flex items-center space-x-2 disabled:opacity-50"
                 >
                   <Send className="w-5 h-5" />
-                  <span>Confirm & Submit to FIA</span>
+                  <span>{isSubmitting ? 'Submitting...' : 'Confirm & Submit to FIA'}</span>
                 </button>
               </div>
             </div>

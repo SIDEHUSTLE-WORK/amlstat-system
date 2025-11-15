@@ -21,6 +21,7 @@ export interface ChatMessage {
   content: string;
   messageType: MessageType;
   attachments?: ChatAttachment[];
+  audioUrl?: string;
   readBy: string[];
   createdAt: Date;
 }

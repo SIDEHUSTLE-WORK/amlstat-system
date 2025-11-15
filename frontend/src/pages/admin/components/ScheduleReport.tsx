@@ -1,6 +1,8 @@
-// src/pages/admin/components/ScheduleReport.tsx
+// frontend/src/pages/admin/components/ScheduleReport.tsx
 import { useState } from 'react';
 import { Calendar, Clock, Mail, X } from 'lucide-react';
+import { adminAPI } from '../../../services/api';
+import toast from 'react-hot-toast';
 
 interface ScheduleReportProps {
   reportType: string;
@@ -25,6 +27,7 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
 
   const [emailInput, setEmailInput] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -63,16 +66,46 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
     });
   };
 
-  const handleSubmit = () => {
+  // 🔥 REAL API SCHEDULE REPORT
+  const handleSubmit = async () => {
     setError('');
     
     if (schedule.recipients.length === 0) {
       setError('Please add at least one recipient');
       return;
     }
-    
-    onSchedule(schedule);
-    onClose();
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await adminAPI.scheduleReport({
+        reportType,
+        frequency: schedule.frequency,
+        time: schedule.time,
+        format: schedule.format,
+        recipients: schedule.recipients
+      });
+
+      if (response.data.success) {
+        toast.success(
+          `Report scheduled successfully! You'll receive ${reportType} reports ${schedule.frequency} at ${schedule.time}.`
+        );
+        onSchedule(schedule);
+        onClose();
+      }
+    } catch (error: any) {
+      console.error('Schedule report error:', error);
+      
+      if (error.response?.data?.message) {
+        setError(error.response.data.message);
+        toast.error(error.response.data.message);
+      } else {
+        setError('Failed to schedule report');
+        toast.error('Failed to schedule report');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -86,8 +119,9 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
               <p className="text-white/80 capitalize mt-1">{reportType} Report</p>
             </div>
             <button 
-              onClick={onClose} 
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50"
               aria-label="Close"
             >
               <X className="w-6 h-6" />
@@ -112,6 +146,7 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
             <select
               value={schedule.frequency}
               onChange={(e) => setSchedule({ ...schedule, frequency: e.target.value as ReportSchedule['frequency'] })}
+              disabled={isSubmitting}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             >
               <option value="daily">Daily</option>
@@ -130,6 +165,7 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
               type="time"
               value={schedule.time}
               onChange={(e) => setSchedule({ ...schedule, time: e.target.value })}
+              disabled={isSubmitting}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             />
           </div>
@@ -146,6 +182,7 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
                     value={format}
                     checked={schedule.format === format}
                     onChange={(e) => setSchedule({ ...schedule, format: e.target.value as ReportSchedule['format'] })}
+                    disabled={isSubmitting}
                     className="sr-only"
                   />
                   <div className={`p-3 border-2 rounded-lg text-center transition-all ${
@@ -177,11 +214,13 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
                 }}
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addRecipient())}
                 placeholder="director@fia.go.ug"
+                disabled={isSubmitting}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               />
               <button
                 onClick={addRecipient}
-                className="px-6 py-2 bg-blue-900 text-white rounded-lg font-semibold hover:bg-blue-800 transition-colors"
+                disabled={isSubmitting}
+                className="px-6 py-2 bg-blue-900 text-white rounded-lg font-semibold hover:bg-blue-800 transition-colors disabled:opacity-50"
               >
                 Add
               </button>
@@ -194,7 +233,8 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
                     <span className="text-sm font-medium text-gray-700">{email}</span>
                     <button
                       onClick={() => removeRecipient(email)}
-                      className="text-red-600 hover:text-red-800 transition-colors"
+                      disabled={isSubmitting}
+                      className="text-red-600 hover:text-red-800 transition-colors disabled:opacity-50"
                       aria-label={`Remove ${email}`}
                     >
                       <X className="w-4 h-4" />
@@ -220,14 +260,22 @@ export default function ScheduleReport({ reportType, onClose, onSchedule }: Sche
           <div className="flex space-x-3 pt-4">
             <button
               onClick={handleSubmit}
-              disabled={schedule.recipients.length === 0}
-              className="flex-1 bg-blue-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              disabled={schedule.recipients.length === 0 || isSubmitting}
+              className="flex-1 bg-blue-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
-              Schedule Report
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
+                  <span>Scheduling...</span>
+                </>
+              ) : (
+                <span>Schedule Report</span>
+              )}
             </button>
             <button
               onClick={onClose}
-              className="px-6 py-3 border-2 border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+              disabled={isSubmitting}
+              className="px-6 py-3 border-2 border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>

@@ -1,3 +1,4 @@
+// frontend/src/pages/LandingPage.tsx
 import { useNavigate } from 'react-router-dom';
 import { 
   Database, 
@@ -8,7 +9,11 @@ import {
   CheckCircle,
   ArrowRight,
   Building2,
-  Shield
+  Shield,
+  FileCheck,
+  Globe,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 
 export default function LandingPage() {
@@ -16,35 +21,37 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-fia-navy via-fia-navy-light to-fia-teal">
-      {/* 🔥 SLEEK NAVBAR WITH GRADIENT FADE! */}
-      <nav className="fixed w-full z-50 px-8 py-3 bg-gradient-to-r from-white via-white to-fia-gold/20 shadow-lg backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            {/* 🎯 BIG LOGO! */}
-            <img 
-              src="https://i.ibb.co/HTGMYb1J/fia-logo.png" 
-              alt="FIA Uganda Logo" 
-              className="w-16 h-16 object-contain"
-              onError={(e) => {
-                // Fallback to Shield icon if image fails to load
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.nextElementSibling?.classList.remove('hidden');
-              }}
-            />
-            <Shield className="w-14 h-14 text-fia-gold hidden" />
-            <div>
-              <h1 className="text-xl font-bold text-fia-navy">FIA Uganda</h1>
-              <p className="text-xs text-fia-gold font-semibold">Financial Intelligence Authority</p>
-            </div>
-          </div>
-          <button
-            onClick={() => navigate('/login')}
-            className="bg-fia-navy hover:bg-fia-navy-light text-white px-6 py-2.5 rounded-lg font-bold transition-all duration-300 hover:shadow-xl"
-          >
-            Sign In
-          </button>
+{/* 🔥 SLEEK & COMPACT NAVBAR! */}
+<nav className="fixed w-full z-50 px-8 py-2 bg-gradient-to-r from-white via-white to-fia-gold/20 shadow-lg backdrop-blur-sm">
+  <div className="max-w-7xl mx-auto flex justify-between items-center">
+    <div className="flex items-center space-x-3">
+      {/* 🎯 SMALLER FIA LOGO! */}
+      <div className="flex items-center space-x-2">
+        <img 
+          src="/fia-logo.png" 
+          alt="FIA Uganda Logo" 
+          className="h-10 w-auto object-contain"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+            const nextElement = e.currentTarget.nextElementSibling;
+            if (nextElement) nextElement.classList.remove('hidden');
+          }}
+        />
+        <Shield className="h-10 w-10 text-fia-navy hidden" />
+        <div>
+          <h1 className="text-base font-bold text-fia-navy">FIA Uganda</h1>
+          <p className="text-[10px] text-fia-gold font-semibold">Financial Intelligence Authority</p>
         </div>
-      </nav>
+      </div>
+    </div>
+    <button
+      onClick={() => navigate('/login')}
+      className="bg-fia-navy hover:bg-fia-navy-light text-white px-5 py-2 rounded-lg font-bold text-sm transition-all duration-300 hover:shadow-xl"
+    >
+      Sign In
+    </button>
+  </div>
+</nav>
 
       {/* Hero Section */}
       <div className="relative overflow-hidden">
@@ -74,23 +81,30 @@ export default function LandingPage() {
                 <span>Get Started</span>
                 <ArrowRight className="w-5 h-5" />
               </button>
-              <button className="border-2 border-white text-white hover:bg-white hover:text-fia-navy px-8 py-4 rounded-lg font-bold text-lg transition-all duration-300">
+              <button 
+                onClick={() => navigate('/login')}
+                className="border-2 border-white text-white hover:bg-white hover:text-fia-navy px-8 py-4 rounded-lg font-bold text-lg transition-all duration-300"
+              >
                 Learn More
               </button>
             </div>
           </div>
           
-          {/* Stats */}
+          {/* 🔥 TRUST BADGES - INSTEAD OF STATS */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20">
             {[
-              { label: 'Active Organizations', value: '284+' },
-              { label: 'Reports Processed', value: '45K+' },
-              { label: 'Compliance Rate', value: '96.5%' },
-              { label: 'Response Time', value: '<24h' },
-            ].map((stat, i) => (
-              <div key={i} className="bg-white/10 backdrop-blur-md rounded-xl p-6 text-center animate-slide-up" style={{ animationDelay: `${i * 100}ms` }}>
-                <div className="text-3xl font-bold text-fia-gold mb-2">{stat.value}</div>
-                <div className="text-sm text-gray-200">{stat.label}</div>
+              { icon: FileCheck, label: 'FATF Compliant', color: 'text-green-400' },
+              { icon: Shield, label: 'Bank-Grade Security', color: 'text-blue-400' },
+              { icon: Globe, label: 'Multi-Institution', color: 'text-purple-400' },
+              { icon: Clock, label: '24/7 Monitoring', color: 'text-yellow-400' },
+            ].map((badge, i) => (
+              <div 
+                key={i} 
+                className="bg-white/10 backdrop-blur-md rounded-xl p-6 text-center animate-slide-up hover:bg-white/20 transition-all duration-300" 
+                style={{ animationDelay: `${i * 100}ms` }}
+              >
+                <badge.icon className={`w-12 h-12 ${badge.color} mx-auto mb-3`} />
+                <div className="text-sm font-semibold text-white">{badge.label}</div>
               </div>
             ))}
           </div>
@@ -158,7 +172,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* Organizations Section */}
+      {/* Organizations Section - NO NUMBERS */}
       <div className="bg-white py-20">
         <div className="max-w-7xl mx-auto px-8">
           <div className="text-center mb-16">
@@ -170,19 +184,18 @@ export default function LandingPage() {
           
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
             {[
-              { name: 'Mobile Money', count: '5', color: 'bg-mmo' },
-              { name: 'Banks', count: '25', color: 'bg-bank' },
-              { name: 'MFIs', count: '64', color: 'bg-mfi' },
-              { name: 'Forex Bureaus', count: '130', color: 'bg-forex' },
-              { name: 'SACCOs', count: '48', color: 'bg-sacco' },
-              { name: 'Insurance', count: '12', color: 'bg-insurance' },
+              { name: 'Mobile Money', color: 'bg-mmo' },
+              { name: 'Banks', color: 'bg-bank' },
+              { name: 'MFIs', color: 'bg-mfi' },
+              { name: 'Forex Bureaus', color: 'bg-forex' },
+              { name: 'SACCOs', color: 'bg-sacco' },
+              { name: 'Insurance', color: 'bg-insurance' },
             ].map((org, i) => (
               <div key={i} className="bg-gray-50 rounded-xl p-6 text-center shadow-md hover:shadow-xl transition-all duration-300">
-                <div className={`w-12 h-12 ${org.color}/10 ${org.color.replace('bg-', 'text-')} rounded-lg flex items-center justify-center mx-auto mb-3`}>
-                  <Users className="w-6 h-6" />
+                <div className={`w-16 h-16 ${org.color}/10 ${org.color.replace('bg-', 'text-')} rounded-lg flex items-center justify-center mx-auto mb-4`}>
+                  <Building2 className="w-8 h-8" />
                 </div>
-                <div className="text-3xl font-bold text-fia-navy mb-1">{org.count}+</div>
-                <div className="text-sm text-gray-600">{org.name}</div>
+                <div className="text-lg font-bold text-fia-navy">{org.name}</div>
               </div>
             ))}
           </div>
@@ -214,17 +227,18 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">
-                {/* Footer logo stays same size */}
+                {/* Footer FIA Logo */}
                 <img 
-                  src="https://i.ibb.co/HTGMYb1J/fia-logo.png" 
+                  src="/fia-logo.png" 
                   alt="FIA Uganda Logo" 
-                  className="w-10 h-10 object-contain"
+                  className="h-12 w-auto object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
-                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    const nextElement = e.currentTarget.nextElementSibling;
+                    if (nextElement) nextElement.classList.remove('hidden');
                   }}
                 />
-                <Shield className="w-8 h-8 text-fia-gold hidden" />
+                <Shield className="h-12 w-12 text-fia-gold hidden" />
                 <span className="font-bold text-lg">FIA Uganda</span>
               </div>
               <p className="text-gray-400 text-sm">
@@ -250,15 +264,43 @@ export default function LandingPage() {
             <div>
               <h4 className="font-bold mb-4">Contact</h4>
               <p className="text-gray-400 text-sm">
-                Plot 1234, Kampala Road<br />
+                Plot 13, Clement Hill Road<br />
                 Kampala, Uganda<br />
                 info@fia.go.ug<br />
-                +256 312 000 000
+                +256 414 343 365
               </p>
             </div>
           </div>
-          <div className="border-t border-gray-700 pt-8 text-center text-gray-400 text-sm">
-            <p>&copy; 2025 Financial Intelligence Authority - Uganda. All rights reserved.</p>
+          
+          {/* 🔥 CTS CONCEPTS GLOBAL BRANDING */}
+          <div className="border-t border-gray-700 pt-6">
+            <div className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0">
+              <p className="text-center text-gray-400 text-sm">
+                &copy; 2025 Financial Intelligence Authority - Uganda. All rights reserved.
+              </p>
+              
+              {/* Built by CTS Concepts Global */}
+              <a 
+                href="https://www.ctsconceptsglobal.space" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center space-x-2 text-gray-400 hover:text-fia-gold transition-all duration-300 group"
+              >
+                <span className="text-sm font-medium">Built by</span>
+                <div className="flex items-center space-x-2 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all duration-300">
+                  <img 
+                    src="https://i.postimg.cc/cvpBZjDF/cts-logo.png" 
+                    alt="CTS Concepts Global Logo" 
+                    className="h-6 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <span className="text-sm font-bold text-white">CTS Concepts Global</span>
+                  <ExternalLink className="w-3 h-3 text-gray-400 group-hover:text-fia-gold transition-colors" />
+                </div>
+              </a>
+            </div>
           </div>
         </div>
       </footer>

@@ -1,7 +1,7 @@
 // backend/src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
-import prisma from '../config/prisma'; // 🔥 PRISMA IMPORT
+import prisma from '../config/prisma';
 
 // Extend Express Request type
 declare global {
@@ -79,22 +79,25 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
 
     next();
   } catch (error: any) {
-    console.error('❌ Auth middleware error:', error);
-    
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid token'
-      });
-    }
-
+    // 🔥 Handle token errors BEFORE logging
     if (error.name === 'TokenExpiredError') {
+      // Don't log - this is expected behavior, frontend will refresh
       return res.status(401).json({
         success: false,
         message: 'Token expired'
       });
     }
 
+    if (error.name === 'JsonWebTokenError') {
+      console.error('❌ Invalid JWT token:', error.message);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+
+    // Only log unexpected errors
+    console.error('❌ Auth middleware error:', error);
     return res.status(500).json({
       success: false,
       message: 'Authentication failed'
@@ -111,7 +114,7 @@ export const adminMiddleware = (req: Request, res: Response, next: NextFunction)
     });
   }
 
-  if (req.user.role !== 'FIA_ADMIN') { // 🔥 UPPERCASE
+  if (req.user.role !== 'FIA_ADMIN') {
     return res.status(403).json({
       success: false,
       message: 'Admin access required'
@@ -130,7 +133,7 @@ export const orgAdminMiddleware = (req: Request, res: Response, next: NextFuncti
     });
   }
 
-  if (req.user.role !== 'ORG_ADMIN' && req.user.role !== 'FIA_ADMIN') { // 🔥 UPPERCASE
+  if (req.user.role !== 'ORG_ADMIN' && req.user.role !== 'FIA_ADMIN') {
     return res.status(403).json({
       success: false,
       message: 'Organization admin access required'

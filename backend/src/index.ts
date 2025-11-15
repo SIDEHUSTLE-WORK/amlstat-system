@@ -14,11 +14,34 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Middleware
+// 🔥 CORS Configuration - Allow multiple origins
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://amlstat-system.vercel.app',  
+  process.env.FRONTEND_URL,  
+].filter(Boolean); 
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, Postman, curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('❌ CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// 🔥 REMOVED DUPLICATE CORS HERE - IT WAS OVERRIDING THE GOOD ONE ABOVE!
+
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

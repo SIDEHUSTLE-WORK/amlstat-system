@@ -257,7 +257,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role.toLowerCase(),
+          role: user.role,
           organizationId: user.organizationId,
           organization: user.organization,
           createdAt: new Date(user.createdAt),
